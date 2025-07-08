@@ -287,13 +287,13 @@ export const ControlPanel = () => {
                   <h4 className="font-medium mb-3">Command Examples</h4>
                   <div className="space-y-2 text-sm">
                     <div className="p-2 bg-muted/50 rounded font-mono">
-                      {"{"}"command": "SET_SCHEDULE", "time": "14:30"}{"}"}
+                      {`{"command": "SET_SCHEDULE", "time": "14:30"}`}
                     </div>
                     <div className="p-2 bg-muted/50 rounded font-mono">
-                      {"{"}"action": "TOGGLE", "target": "all"}{"}"}
+                      {`{"action": "TOGGLE", "target": "all"}`}
                     </div>
                     <div className="p-2 bg-muted/50 rounded font-mono">
-                      {"{"}"mode": "emergency", "priority": "high"}{"}"}
+                      {`{"mode": "emergency", "priority": "high"}`}
                     </div>
                   </div>
                 </div>
