@@ -14,7 +14,8 @@ export const useAuditLog = () => {
     if (!user) return;
 
     try {
-      await supabase.from('audit_logs').insert({
+      // Use type assertion to work around missing types
+      await (supabase as any).from('audit_logs').insert({
         user_id: user.id,
         action,
         resource_type: resourceType,

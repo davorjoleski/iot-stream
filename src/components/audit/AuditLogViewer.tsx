@@ -27,7 +27,8 @@ export const AuditLogViewer = () => {
       if (!user) return;
 
       try {
-        const { data, error } = await supabase
+        // Use type assertion to work around missing types
+        const { data, error } = await (supabase as any)
           .from('audit_logs')
           .select('*')
           .order('created_at', { ascending: false })
