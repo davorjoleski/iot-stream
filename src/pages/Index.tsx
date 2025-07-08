@@ -7,7 +7,6 @@ import { Progress } from "@/components/ui/progress";
 import { 
   Activity, 
   AlertTriangle, 
-  Check, 
   Database, 
   Gauge, 
   Power, 
@@ -42,6 +41,21 @@ const Index = () => {
   const [criticalAlerts, setCriticalAlerts] = useState(2);
   const [activeTab, setActiveTab] = useState("overview");
 
+  // Log user dashboard access - keeping hooks in the same order
+  useEffect(() => {
+    if (user) {
+      logAction('DASHBOARD_ACCESS', 'dashboard');
+    }
+  }, [user, logAction]);
+
+  // Simulate real-time updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveDevices(prev => Math.max(0, prev + Math.floor(Math.random() * 3) - 1));
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Redirect to auth if not authenticated
   if (loading) {
     return (
@@ -59,21 +73,6 @@ const Index = () => {
   if (!user) {
     return <Navigate to="/auth" replace />;
   }
-
-  // Log user dashboard access
-  useEffect(() => {
-    if (user) {
-      logAction('DASHBOARD_ACCESS', 'dashboard');
-    }
-  }, [user, logAction]);
-
-  // Simulate real-time updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveDevices(prev => Math.max(0, prev + Math.floor(Math.random() * 3) - 1));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleSignOut = async () => {
     await logAction('USER_LOGOUT', 'auth');

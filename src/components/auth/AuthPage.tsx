@@ -1,24 +1,30 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Activity, AlertCircle } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { Navigate } from 'react-router-dom';
 
 export const AuthPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { user, loading, signIn, signUp } = useAuth();
   const { toast } = useToast();
+
+  // Redirect to home if already authenticated
+  if (user && !loading) {
+    return <Navigate to="/" replace />;
+  }
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setIsSubmitting(true);
     
     const { error } = await signIn(email, password);
     
@@ -28,18 +34,18 @@ export const AuthPage = () => {
         description: error.message,
         variant: "destructive",
       });
+      setIsSubmitting(false);
     } else {
       toast({
         title: "Welcome back!",
         description: "You have successfully signed in.",
       });
     }
-    setLoading(false);
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setIsSubmitting(true);
     
     const { error } = await signUp(email, password);
     
@@ -49,13 +55,14 @@ export const AuthPage = () => {
         description: error.message,
         variant: "destructive",
       });
+      setIsSubmitting(false);
     } else {
       toast({
         title: "Account Created!",
         description: "Please check your email to verify your account.",
       });
+      setIsSubmitting(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -105,8 +112,8 @@ export const AuthPage = () => {
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Signing In...' : 'Sign In'}
+                <Button type="submit" className="w-full" disabled={isSubmitting || loading}>
+                  {isSubmitting || loading ? 'Signing In...' : 'Sign In'}
                 </Button>
               </form>
             </TabsContent>
@@ -135,8 +142,8 @@ export const AuthPage = () => {
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Creating Account...' : 'Create Account'}
+                <Button type="submit" className="w-full" disabled={isSubmitting || loading}>
+                  {isSubmitting || loading ? 'Creating Account...' : 'Create Account'}
                 </Button>
               </form>
             </TabsContent>
