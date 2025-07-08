@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,27 +20,65 @@ import {
   Bell,
   BarChart3,
   Users,
-  Zap
+  Zap,
+  LogOut
 } from "lucide-react";
 import { DashboardStats } from "@/components/dashboard/DashboardStats";
 import { DeviceGrid } from "@/components/devices/DeviceGrid";
 import { TelemetryChart } from "@/components/telemetry/TelemetryChart";
 import { AlertsPanel } from "@/components/alerts/AlertsPanel";
 import { ControlPanel } from "@/components/control/ControlPanel";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { AuditLogViewer } from "@/components/audit/AuditLogViewer";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import { Navigate } from "react-router-dom";
 
 const Index = () => {
+  const { user, loading, signOut } = useAuth();
+  const { logAction } = useAuditLog();
   const [activeDevices, setActiveDevices] = useState(12);
   const [totalDevices, setTotalDevices] = useState(15);
   const [criticalAlerts, setCriticalAlerts] = useState(2);
   const [activeTab, setActiveTab] = useState("overview");
 
+  // Redirect to auth if not authenticated
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-blue-950 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center mx-auto mb-4">
+            <Activity className="w-5 h-5 text-white animate-pulse" />
+          </div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  // Log user dashboard access
+  useEffect(() => {
+    if (user) {
+      logAction('DASHBOARD_ACCESS', 'dashboard');
+    }
+  }, [user, logAction]);
+
   // Simulate real-time updates
   useEffect(() => {
     const interval = setInterval(() => {
-      setActiveDevices(prev => prev + Math.floor(Math.random() * 3) - 1);
+      setActiveDevices(prev => Math.max(0, prev + Math.floor(Math.random() * 3) - 1));
     }, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleSignOut = async () => {
+    await logAction('USER_LOGOUT', 'auth');
+    await signOut();
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-blue-950">
@@ -65,16 +102,18 @@ const Index = () => {
             </div>
             
             <div className="flex items-center space-x-4">
+              <ThemeToggle />
               <Button variant="outline" size="sm">
                 <Bell className="w-4 h-4 mr-2" />
                 Alerts ({criticalAlerts})
               </Button>
               <Button variant="outline" size="sm">
                 <Users className="w-4 h-4 mr-2" />
-                Admin
+                {user.email}
               </Button>
-              <Button variant="outline" size="sm">
-                <Settings className="w-4 h-4" />
+              <Button variant="outline" size="sm" onClick={handleSignOut}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
               </Button>
             </div>
           </div>
@@ -91,7 +130,7 @@ const Index = () => {
 
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-8">
-          <TabsList className="grid w-full grid-cols-5 lg:w-fit">
+          <TabsList className="grid w-full grid-cols-6 lg:w-fit">
             <TabsTrigger value="overview" className="flex items-center space-x-2">
               <BarChart3 className="w-4 h-4" />
               <span>Overview</span>
@@ -111,6 +150,10 @@ const Index = () => {
             <TabsTrigger value="alerts" className="flex items-center space-x-2">
               <AlertTriangle className="w-4 h-4" />
               <span>Alerts</span>
+            </TabsTrigger>
+            <TabsTrigger value="audit" className="flex items-center space-x-2">
+              <Shield className="w-4 h-4" />
+              <span>Audit</span>
             </TabsTrigger>
           </TabsList>
 
@@ -219,6 +262,10 @@ const Index = () => {
 
           <TabsContent value="alerts" className="mt-6">
             <AlertsPanel />
+          </TabsContent>
+
+          <TabsContent value="audit" className="mt-6">
+            <AuditLogViewer />
           </TabsContent>
         </Tabs>
       </div>
