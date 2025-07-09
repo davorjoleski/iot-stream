@@ -9,8 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, Bell, Mail, MessageSquare, Plus, Settings, Check, X } from "lucide-react";
+import { AlertTriangle, Bell, Mail, MessageSquare, Plus, Settings, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -39,7 +38,7 @@ export const AlertsPanel = ({ alerts }: AlertsPanelProps) => {
     email_notifications: true,
     sms_notifications: false,  
     push_notifications: true,
-    alert_types: ["critical", "warning"],
+    alert_types: ["critical", "warning"] as string[],
     phone_number: ""
   });
   const [newAlert, setNewAlert] = useState({
@@ -71,7 +70,13 @@ export const AlertsPanel = ({ alerts }: AlertsPanelProps) => {
         .single();
 
       if (data) {
-        setNotificationSettings(data);
+        setNotificationSettings({
+          email_notifications: data.email_notifications || true,
+          sms_notifications: data.sms_notifications || false,
+          push_notifications: data.push_notifications || true,
+          alert_types: Array.isArray(data.alert_types) ? data.alert_types as string[] : ["critical", "warning"],
+          phone_number: data.phone_number || ""
+        });
       }
     };
 

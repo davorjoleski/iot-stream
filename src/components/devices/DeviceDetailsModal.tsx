@@ -119,17 +119,20 @@ export const DeviceDetailsModal = ({ device, open, onOpenChange }: DeviceDetails
     }
   };
 
-  const formatValue = (key: string, value: number) => {
+  const formatValue = (key: string, value: unknown) => {
     if (value === null || value === undefined) return 'N/A';
     
+    const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+    if (isNaN(numValue)) return 'N/A';
+    
     switch (key) {
-      case 'temperature': return `${value}°C`;
-      case 'humidity': return `${value}%`;
-      case 'pressure': return `${value} bar`;
-      case 'power': return `${value}W`;
-      case 'voltage': return `${value}V`;
-      case 'current': return `${value}A`;
-      default: return `${value}`;
+      case 'temperature': return `${numValue}°C`;
+      case 'humidity': return `${numValue}%`;
+      case 'pressure': return `${numValue} bar`;
+      case 'power': return `${numValue}W`;
+      case 'voltage': return `${numValue}V`;
+      case 'current': return `${numValue}A`;
+      default: return `${numValue}`;
     }
   };
 

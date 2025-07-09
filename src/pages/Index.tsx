@@ -92,6 +92,11 @@ const Index = () => {
     });
   };
 
+  // Calculate dashboard statistics
+  const activeDevices = devices.filter((device: any) => device.status === 'online').length;
+  const totalDevices = devices.length;
+  const criticalAlerts = alerts.filter((alert: any) => alert.severity === 'critical').length;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-blue-950 flex items-center justify-center">
@@ -163,7 +168,11 @@ const Index = () => {
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-6">
-            <DashboardStats />
+            <DashboardStats 
+              activeDevices={activeDevices}
+              totalDevices={totalDevices}
+              criticalAlerts={criticalAlerts}
+            />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <TelemetryChart />
             </div>
