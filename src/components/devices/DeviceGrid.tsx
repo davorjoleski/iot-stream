@@ -1,9 +1,10 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { 
   Thermometer, 
   Droplets, 
@@ -15,84 +16,40 @@ import {
   Search,
   Settings,
   Power,
-  MoreVertical
+  MoreVertical,
+  Activity
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { DeviceDetailsModal } from "./DeviceDetailsModal";
+import { AddDeviceModal } from "./AddDeviceModal";
 
-const mockDevices = [
-  {
-    id: "DEV-001",
-    name: "Temperature Sensor A1",
-    type: "Temperature Sensor",
-    location: "Server Room",
-    status: "online",
-    lastSeen: "2 min ago",
-    temperature: 24.5,
-    icon: Thermometer,
-    color: "text-blue-600"
-  },
-  {
-    id: "DEV-002",
-    name: "Humidity Monitor B2",
-    type: "Humidity Sensor",
-    location: "Warehouse",
-    status: "online",
-    lastSeen: "1 min ago",
-    humidity: 65,
-    icon: Droplets,
-    color: "text-cyan-600"
-  },
-  {
-    id: "DEV-003",
-    name: "Power Monitor C3",
-    type: "Power Sensor",
-    location: "Main Panel",
-    status: "offline",
-    lastSeen: "15 min ago",
-    power: 0,
-    icon: Zap,
-    color: "text-yellow-600"
-  },
-  {
-    id: "DEV-004",
-    name: "Pressure Gauge D4",
-    type: "Pressure Sensor",
-    location: "Pump Station",
-    status: "online",
-    lastSeen: "30 sec ago",
-    pressure: 2.4,
-    icon: Gauge,
-    color: "text-green-600"
-  },
-  {
-    id: "DEV-005",
-    name: "Motor Controller E5",
-    type: "Actuator",
-    location: "Production Line",
-    status: "online",
-    lastSeen: "1 min ago",
-    speed: 1850,
-    icon: Settings,
-    color: "text-purple-600"
-  },
-  {
-    id: "DEV-006",
-    name: "Cooling System F6",
-    type: "Environmental Control",
-    location: "Data Center",
-    status: "warning",
-    lastSeen: "45 sec ago",
-    temperature: 28.9,
-    icon: Thermometer,
-    color: "text-orange-600"
-  }
-];
+interface Device {
+  id: string;
+  name: string;
+  type: string;
+  location: string;
+  status: string;
+  last_seen: string;
+  telemetry_data: any;
+  configuration: any;
+}
 
-export const DeviceGrid = () => {
+interface DeviceGridProps {
+  devices: Device[];
+  onDeviceSelect?: (device: Device) => void;
+  selectedDevice?: Device | null;
+}
+
+export const DeviceGrid = ({ devices, onDeviceSelect, selectedDevice }: DeviceGridProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedType, setSelectedType] = useState("all");
+  const [showAddDevice, setShowAddDevice] = useState(false);
+  const [showDeviceDetails, setShowDeviceDetails] = useState(false);
+  const { toast } = useToast();
 
-  const filteredDevices = mockDevices.filter(device => 
+  const filteredDevices = devices.filter(device => 
     device.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
     (selectedType === "all" || device.type === selectedType)
   );
@@ -110,13 +67,59 @@ export const DeviceGrid = () => {
     }
   };
 
-  const getDeviceValue = (device: any) => {
-    if (device.temperature !== undefined) return `${device.temperature}°C`;
-    if (device.humidity !== undefined) return `${device.humidity}%`;
-    if (device.power !== undefined) return `${device.power}W`;
-    if (device.pressure !== undefined) return `${device.pressure} bar`;
-    if (device.speed !== undefined) return `${device.speed} RPM`;
+  const getDeviceIcon = (type: string) => {
+    switch (type.toLowerCase()) {
+      case 'temperature sensor':
+        return Thermometer;
+      case 'humidity sensor':
+        return Droplets;
+      case 'power sensor':
+        return Zap;
+      case 'pressure sensor':
+        return Gauge;
+      default:
+        return Activity;
+    }
+  };
+
+  const getDeviceValue = (device: Device) => {
+    const data = device.telemetry_data || {};
+    if (data.temperature !== undefined) return `${data.temperature}°C`;
+    if (data.humidity !== undefined) return `${data.humidity}%`;
+    if (data.power !== undefined) return `${data.power}W`;
+    if (data.pressure !== undefined) return `${data.pressure} bar`;
+    if (data.speed !== undefined) return `${data.speed} RPM`;
     return "N/A";
+  };
+
+  const handleDeviceClick = (device: Device) => {
+    onDeviceSelect?.(device);
+    setShowDeviceDetails(true);
+  };
+
+  const toggleDevicePower = async (device: Device) => {
+    const newStatus = device.status === 'online' ? 'offline' : 'online';
+    
+    try {
+      const { error } = await supabase
+        .from('devices')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', device.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Device Updated",
+        description: `${device.name} has been turned ${newStatus}`,
+      });
+    } catch (error) {
+      console.error('Error updating device:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update device status",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -127,7 +130,7 @@ export const DeviceGrid = () => {
           <h2 className="text-2xl font-bold">Device Management</h2>
           <p className="text-muted-foreground">Monitor and control all connected IoT devices</p>
         </div>
-        <Button className="bg-gradient-to-r from-blue-600 to-cyan-600">
+        <Button onClick={() => setShowAddDevice(true)} className="bg-gradient-to-r from-blue-600 to-cyan-600">
           <Plus className="w-4 h-4 mr-2" />
           Add Device
         </Button>
@@ -162,12 +165,20 @@ export const DeviceGrid = () => {
       {/* Device Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredDevices.map((device) => {
-          const IconComponent = device.icon;
+          const IconComponent = getDeviceIcon(device.type);
+          const isSelected = selectedDevice?.id === device.id;
+          
           return (
-            <Card key={device.id} className="hover:shadow-lg transition-shadow cursor-pointer">
+            <Card 
+              key={device.id} 
+              className={`hover:shadow-lg transition-all cursor-pointer ${
+                isSelected ? 'ring-2 ring-blue-500 border-blue-500' : ''
+              }`}
+              onClick={() => handleDeviceClick(device)}
+            >
               <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                 <div className="flex items-start space-x-3">
-                  <div className={`p-2 rounded-lg bg-muted/50 ${device.color}`}>
+                  <div className={`p-2 rounded-lg bg-muted/50 text-blue-600`}>
                     <IconComponent className="w-5 h-5" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -176,17 +187,17 @@ export const DeviceGrid = () => {
                   </div>
                 </div>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                     <Button variant="ghost" size="sm">
                       <MoreVertical className="w-4 h-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); /* Configure logic */ }}>
                       <Settings className="w-4 h-4 mr-2" />
                       Configure
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); toggleDevicePower(device); }}>
                       <Power className="w-4 h-4 mr-2" />
                       {device.status === "online" ? "Turn Off" : "Turn On"}
                     </DropdownMenuItem>
@@ -197,12 +208,14 @@ export const DeviceGrid = () => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     {getStatusBadge(device.status)}
-                    <span className="text-sm text-muted-foreground">{device.lastSeen}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {device.last_seen ? new Date(device.last_seen).toLocaleString() : 'Never'}
+                    </span>
                   </div>
                   
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Location:</span>
-                    <span className="text-sm text-muted-foreground">{device.location}</span>
+                    <span className="text-sm text-muted-foreground">{device.location || 'Not set'}</span>
                   </div>
                   
                   <div className="flex items-center justify-between">
@@ -213,7 +226,7 @@ export const DeviceGrid = () => {
                   </div>
                   
                   <div className="text-xs text-muted-foreground pt-2 border-t">
-                    ID: {device.id}
+                    ID: {device.id.substring(0, 8)}...
                   </div>
                 </div>
               </CardContent>
@@ -221,6 +234,17 @@ export const DeviceGrid = () => {
           );
         })}
       </div>
+
+      {/* Modals */}
+      <AddDeviceModal open={showAddDevice} onOpenChange={setShowAddDevice} />
+      
+      {selectedDevice && (
+        <DeviceDetailsModal
+          device={selectedDevice}
+          open={showDeviceDetails}
+          onOpenChange={setShowDeviceDetails}
+        />
+      )}
     </div>
   );
 };

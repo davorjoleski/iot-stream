@@ -1,70 +1,103 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
-import { 
-  Activity, 
-  AlertTriangle, 
-  Database, 
-  Gauge, 
-  Power, 
-  Settings, 
-  Shield, 
-  Thermometer, 
-  Wifi, 
-  WifiOff,
-  Plus,
-  Bell,
-  BarChart3,
-  Users,
-  Zap,
-  LogOut
-} from "lucide-react";
+
+import { useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import { DashboardStats } from "@/components/dashboard/DashboardStats";
 import { DeviceGrid } from "@/components/devices/DeviceGrid";
 import { TelemetryChart } from "@/components/telemetry/TelemetryChart";
 import { AlertsPanel } from "@/components/alerts/AlertsPanel";
 import { ControlPanel } from "@/components/control/ControlPanel";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { AuditLogViewer } from "@/components/audit/AuditLogViewer";
-import { useAuth } from "@/hooks/useAuth";
-import { useAuditLog } from "@/hooks/useAuditLog";
-import { Navigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Activity, Settings, Bell, BarChart3, Shield, LogOut } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
   const { user, loading, signOut } = useAuth();
-  const { logAction } = useAuditLog();
-  const [activeDevices, setActiveDevices] = useState(12);
-  const [totalDevices, setTotalDevices] = useState(15);
-  const [criticalAlerts, setCriticalAlerts] = useState(2);
-  const [activeTab, setActiveTab] = useState("overview");
+  const { toast } = useToast();
+  const [devices, setDevices] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [selectedDevice, setSelectedDevice] = useState(null);
 
-  // Log user dashboard access - keeping hooks in the same order
   useEffect(() => {
-    if (user) {
-      logAction('DASHBOARD_ACCESS', 'dashboard');
-    }
-  }, [user, logAction]);
+    if (!user) return;
 
-  // Simulate real-time updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveDevices(prev => Math.max(0, prev + Math.floor(Math.random() * 3) - 1));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    // Fetch devices and alerts
+    const fetchData = async () => {
+      try {
+        const { data: devicesData } = await supabase
+          .from('devices')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-  // Redirect to auth if not authenticated
+        const { data: alertsData } = await supabase
+          .from('alerts')
+          .select('*')
+          .eq('status', 'active')
+          .order('created_at', { ascending: false });
+
+        setDevices(devicesData || []);
+        setAlerts(alertsData || []);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      }
+    };
+
+    fetchData();
+
+    // Set up real-time subscriptions
+    const devicesChannel = supabase
+      .channel('devices-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'devices' },
+        (payload) => {
+          console.log('Device change:', payload);
+          fetchData(); // Refetch on changes
+        }
+      )
+      .subscribe();
+
+    const alertsChannel = supabase
+      .channel('alerts-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'alerts' },
+        (payload) => {
+          console.log('Alert change:', payload);
+          fetchData(); // Refetch on changes
+          
+          if (payload.eventType === 'INSERT') {
+            toast({
+              title: "New Alert",
+              description: payload.new.message,
+              variant: payload.new.severity === 'critical' ? 'destructive' : 'default',
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(devicesChannel);
+      supabase.removeChannel(alertsChannel);
+    };
+  }, [user, toast]);
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast({
+      title: "Signed out",
+      description: "You have been successfully signed out.",
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-blue-950 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center mx-auto mb-4">
-            <Activity className="w-5 h-5 text-white animate-pulse" />
-          </div>
-          <p className="text-muted-foreground">Loading...</p>
+          <Activity className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
     );
@@ -74,196 +107,89 @@ const Index = () => {
     return <Navigate to="/auth" replace />;
   }
 
-  const handleSignOut = async () => {
-    await logAction('USER_LOGOUT', 'auth');
-    await signOut();
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-blue-950">
       {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm dark:bg-slate-900/80 sticky top-0 z-50">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center">
-                  <Activity className="w-5 h-5 text-white" />
-                </div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
-                  IoT Control Hub
-                </h1>
-              </div>
-              <Badge variant="secondary" className="ml-4">
-                <Wifi className="w-3 h-3 mr-1" />
-                Connected
-              </Badge>
+      <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center">
+              <Activity className="w-5 h-5 text-white" />
             </div>
-            
-            <div className="flex items-center space-x-4">
-              <ThemeToggle />
-              <Button variant="outline" size="sm">
-                <Bell className="w-4 h-4 mr-2" />
-                Alerts ({criticalAlerts})
-              </Button>
-              <Button variant="outline" size="sm">
-                <Users className="w-4 h-4 mr-2" />
-                {user.email}
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleSignOut}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Sign Out
-              </Button>
-            </div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+              IoT Control Hub
+            </h1>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            <span className="text-sm text-muted-foreground">
+              Welcome, {user.email}
+            </span>
+            <Button onClick={handleSignOut} variant="outline" size="sm">
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
-        {/* Dashboard Stats */}
-        <DashboardStats 
-          activeDevices={activeDevices}
-          totalDevices={totalDevices}
-          criticalAlerts={criticalAlerts}
-        />
-
-        {/* Main Content Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-8">
-          <TabsList className="grid w-full grid-cols-6 lg:w-fit">
-            <TabsTrigger value="overview" className="flex items-center space-x-2">
+      <div className="container mx-auto px-4 py-6">
+        <Tabs defaultValue="dashboard" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:grid-cols-6">
+            <TabsTrigger value="dashboard" className="flex items-center space-x-2">
               <BarChart3 className="w-4 h-4" />
-              <span>Overview</span>
+              <span className="hidden sm:inline">Dashboard</span>
             </TabsTrigger>
             <TabsTrigger value="devices" className="flex items-center space-x-2">
-              <Database className="w-4 h-4" />
-              <span>Devices</span>
-            </TabsTrigger>
-            <TabsTrigger value="telemetry" className="flex items-center space-x-2">
               <Activity className="w-4 h-4" />
-              <span>Telemetry</span>
+              <span className="hidden sm:inline">Devices</span>
             </TabsTrigger>
             <TabsTrigger value="control" className="flex items-center space-x-2">
-              <Zap className="w-4 h-4" />
-              <span>Control</span>
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline">Control</span>
             </TabsTrigger>
             <TabsTrigger value="alerts" className="flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4" />
-              <span>Alerts</span>
+              <Bell className="w-4 h-4" />
+              <span className="hidden sm:inline">Alerts</span>
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="flex items-center space-x-2">
+              <BarChart3 className="w-4 h-4" />
+              <span className="hidden sm:inline">Analytics</span>
             </TabsTrigger>
             <TabsTrigger value="audit" className="flex items-center space-x-2">
               <Shield className="w-4 h-4" />
-              <span>Audit</span>
+              <span className="hidden sm:inline">Audit</span>
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="mt-6">
+          <TabsContent value="dashboard" className="space-y-6">
+            <DashboardStats />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <Activity className="w-5 h-5 text-blue-600" />
-                    <span>System Health Overview</span>
-                  </CardTitle>
-                  <CardDescription>Real-time system performance metrics</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>CPU Usage</span>
-                        <span>67%</span>
-                      </div>
-                      <Progress value={67} className="h-2" />
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>Memory Usage</span>
-                        <span>45%</span>
-                      </div>
-                      <Progress value={45} className="h-2" />
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>Network I/O</span>
-                        <span>23%</span>
-                      </div>
-                      <Progress value={23} className="h-2" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <Thermometer className="w-5 h-5 text-red-500" />
-                    <span>Environmental Status</span>
-                  </CardTitle>
-                  <CardDescription>Current environmental readings</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">24°C</div>
-                      <div className="text-sm text-muted-foreground">Temperature</div>
-                    </div>
-                    <div className="text-center p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">65%</div>
-                      <div className="text-sm text-muted-foreground">Humidity</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="mt-6">
               <TelemetryChart />
             </div>
           </TabsContent>
 
-          <TabsContent value="devices" className="mt-6">
-            <DeviceGrid />
+          <TabsContent value="devices">
+            <DeviceGrid 
+              devices={devices} 
+              onDeviceSelect={setSelectedDevice}
+              selectedDevice={selectedDevice}
+            />
           </TabsContent>
 
-          <TabsContent value="telemetry" className="mt-6">
-            <div className="space-y-6">
-              <TelemetryChart />
-              <Card>
-                <CardHeader>
-                  <CardTitle>Live Data Stream</CardTitle>
-                  <CardDescription>Real-time telemetry from all connected devices</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {[...Array(10)].map((_, i) => (
-                      <div key={i} className="flex justify-between items-center p-2 bg-muted/50 rounded text-sm">
-                        <span className="text-muted-foreground">
-                          {new Date(Date.now() - i * 1000).toLocaleTimeString()}
-                        </span>
-                        <span>Device-{String(i + 1).padStart(3, '0')}</span>
-                        <span className="font-mono">
-                          Temp: {(20 + Math.random() * 10).toFixed(1)}°C
-                        </span>
-                        <Badge variant={Math.random() > 0.7 ? "destructive" : "secondary"}>
-                          {Math.random() > 0.7 ? "Alert" : "Normal"}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+          <TabsContent value="control">
+            <ControlPanel devices={devices} />
           </TabsContent>
 
-          <TabsContent value="control" className="mt-6">
-            <ControlPanel />
+          <TabsContent value="alerts">
+            <AlertsPanel alerts={alerts} />
           </TabsContent>
 
-          <TabsContent value="alerts" className="mt-6">
-            <AlertsPanel />
+          <TabsContent value="analytics">
+            <TelemetryChart />
           </TabsContent>
 
-          <TabsContent value="audit" className="mt-6">
+          <TabsContent value="audit">
             <AuditLogViewer />
           </TabsContent>
         </Tabs>

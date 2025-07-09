@@ -14,7 +14,250 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      alerts: {
+        Row: {
+          acknowledged: boolean | null
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          created_at: string
+          device_id: string | null
+          id: string
+          message: string
+          resolved_at: string | null
+          severity: string
+          status: string
+          type: string
+        }
+        Insert: {
+          acknowledged?: boolean | null
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          message: string
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          type: string
+        }
+        Update: {
+          acknowledged?: boolean | null
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          created_at?: string
+          device_id?: string | null
+          id?: string
+          message?: string
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alerts_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string
+          details: Json | null
+          id: string
+          ip_address: unknown | null
+          resource_id: string | null
+          resource_type: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          ip_address?: unknown | null
+          resource_id?: string | null
+          resource_type: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          ip_address?: unknown | null
+          resource_id?: string | null
+          resource_type?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      automation_workflows: {
+        Row: {
+          actions: Json
+          created_at: string
+          description: string | null
+          enabled: boolean | null
+          id: string
+          name: string
+          trigger_conditions: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actions: Json
+          created_at?: string
+          description?: string | null
+          enabled?: boolean | null
+          id?: string
+          name: string
+          trigger_conditions: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actions?: Json
+          created_at?: string
+          description?: string | null
+          enabled?: boolean | null
+          id?: string
+          name?: string
+          trigger_conditions?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      devices: {
+        Row: {
+          configuration: Json | null
+          created_at: string
+          id: string
+          last_seen: string | null
+          location: string | null
+          name: string
+          status: string
+          telemetry_data: Json | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          configuration?: Json | null
+          created_at?: string
+          id?: string
+          last_seen?: string | null
+          location?: string | null
+          name: string
+          status?: string
+          telemetry_data?: Json | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          configuration?: Json | null
+          created_at?: string
+          id?: string
+          last_seen?: string | null
+          location?: string | null
+          name?: string
+          status?: string
+          telemetry_data?: Json | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      notification_settings: {
+        Row: {
+          alert_types: Json | null
+          created_at: string
+          email_notifications: boolean | null
+          id: string
+          phone_number: string | null
+          push_notifications: boolean | null
+          sms_notifications: boolean | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alert_types?: Json | null
+          created_at?: string
+          email_notifications?: boolean | null
+          id?: string
+          phone_number?: string | null
+          push_notifications?: boolean | null
+          sms_notifications?: boolean | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alert_types?: Json | null
+          created_at?: string
+          email_notifications?: boolean | null
+          id?: string
+          phone_number?: string | null
+          push_notifications?: boolean | null
+          sms_notifications?: boolean | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      telemetry: {
+        Row: {
+          current: number | null
+          data: Json | null
+          device_id: string
+          humidity: number | null
+          id: string
+          power: number | null
+          pressure: number | null
+          temperature: number | null
+          timestamp: string
+          voltage: number | null
+        }
+        Insert: {
+          current?: number | null
+          data?: Json | null
+          device_id: string
+          humidity?: number | null
+          id?: string
+          power?: number | null
+          pressure?: number | null
+          temperature?: number | null
+          timestamp?: string
+          voltage?: number | null
+        }
+        Update: {
+          current?: number | null
+          data?: Json | null
+          device_id?: string
+          humidity?: number | null
+          id?: string
+          power?: number | null
+          pressure?: number | null
+          temperature?: number | null
+          timestamp?: string
+          voltage?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telemetry_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

@@ -1,116 +1,191 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  AlertTriangle, 
-  Bell, 
-  Check, 
-  Clock, 
-  Filter, 
-  Plus, 
-  Search,
-  X,
-  Mail,
-  Smartphone
-} from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertTriangle, Bell, Mail, MessageSquare, Plus, Settings, Check, X } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
-const mockAlerts = [
-  {
-    id: "ALT-001",
-    device: "Temperature Sensor A1",
-    type: "Critical",
-    message: "Temperature exceeded 30°C threshold",
-    timestamp: "2024-01-15 14:30:22",
-    status: "active",
-    severity: "high",
-    acknowledged: false
-  },
-  {
-    id: "ALT-002",
-    device: "Power Monitor C3",
-    type: "Warning",
-    message: "Device offline for more than 10 minutes",
-    timestamp: "2024-01-15 14:15:10",
-    status: "active",
+interface Alert {
+  id: string;
+  device_id: string;
+  type: string;
+  severity: string;
+  message: string;
+  status: string;
+  acknowledged: boolean;
+  created_at: string;
+}
+
+interface AlertsPanelProps {
+  alerts: Alert[];
+}
+
+export const AlertsPanel = ({ alerts }: AlertsPanelProps) => {
+  const [showCreateAlert, setShowCreateAlert] = useState(false);
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
+  const [devices, setDevices] = useState([]);
+  const [notificationSettings, setNotificationSettings] = useState({
+    email_notifications: true,
+    sms_notifications: false,  
+    push_notifications: true,
+    alert_types: ["critical", "warning"],
+    phone_number: ""
+  });
+  const [newAlert, setNewAlert] = useState({
+    device_id: "",
+    type: "threshold",
     severity: "medium",
-    acknowledged: false
-  },
-  {
-    id: "ALT-003",
-    device: "Humidity Monitor B2",
-    type: "Info",
-    message: "Humidity levels back to normal",
-    timestamp: "2024-01-15 13:45:33",
-    status: "resolved",
-    severity: "low",
-    acknowledged: true
-  },
-  {
-    id: "ALT-004",
-    device: "Cooling System F6",
-    type: "Critical",
-    message: "Cooling system efficiency below 70%",
-    timestamp: "2024-01-15 13:20:15",
-    status: "active",
-    severity: "high",
-    acknowledged: true
-  },
-  {
-    id: "ALT-005",
-    device: "Motor Controller E5",
-    type: "Warning",
-    message: "Unusual vibration patterns detected",
-    timestamp: "2024-01-15 12:55:42",
-    status: "investigating",
-    severity: "medium",
-    acknowledged: true
-  }
-];
-
-export const AlertsPanel = () => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedSeverity, setSelectedSeverity] = useState("all");
-  const [activeTab, setActiveTab] = useState("active");
-
-  const filteredAlerts = mockAlerts.filter(alert => {
-    const matchesSearch = alert.device.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         alert.message.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesSeverity = selectedSeverity === "all" || alert.severity === selectedSeverity;
-    const matchesTab = activeTab === "all" || 
-                      (activeTab === "active" && alert.status === "active") ||
-                      (activeTab === "resolved" && alert.status === "resolved") ||
-                      (activeTab === "investigating" && alert.status === "investigating");
-    
-    return matchesSearch && matchesSeverity && matchesTab;
+    message: ""
   });
 
-  const getSeverityBadge = (severity: string) => {
-    switch (severity) {
-      case "high":
-        return <Badge variant="destructive">Critical</Badge>;
-      case "medium":
-        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Warning</Badge>;
-      case "low":
-        return <Badge variant="secondary">Info</Badge>;
-      default:
-        return <Badge variant="outline">Unknown</Badge>;
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const { logAction } = useAuditLog();
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Fetch devices for alert creation
+    const fetchDevices = async () => {
+      const { data } = await supabase.from('devices').select('id, name, type');
+      setDevices(data || []);
+    };
+
+    // Fetch notification settings
+    const fetchNotificationSettings = async () => {
+      const { data } = await supabase
+        .from('notification_settings')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (data) {
+        setNotificationSettings(data);
+      }
+    };
+
+    fetchDevices();
+    fetchNotificationSettings();
+  }, [user]);
+
+  const acknowledgeAlert = async (alertId: string) => {
+    try {
+      const { error } = await supabase
+        .from('alerts')
+        .update({
+          acknowledged: true,
+          acknowledged_by: user?.id,
+          acknowledged_at: new Date().toISOString()
+        })
+        .eq('id', alertId);
+
+      if (error) throw error;
+
+      await logAction('ACKNOWLEDGE_ALERT', 'alert', alertId);
+
+      toast({
+        title: "Alert Acknowledged",
+        description: "Alert has been marked as acknowledged.",
+      });
+    } catch (error) {
+      console.error('Error acknowledging alert:', error);
+      toast({
+        title: "Error",
+        description: "Failed to acknowledge alert",
+        variant: "destructive",
+      });
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "active":
-        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Active</Badge>;
-      case "resolved":
-        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Resolved</Badge>;
-      case "investigating":
-        return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Investigating</Badge>;
-      default:
-        return <Badge variant="outline">Unknown</Badge>;
+  const createAlert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      const { data, error } = await supabase
+        .from('alerts')
+        .insert([{
+          device_id: newAlert.device_id || null,
+          type: newAlert.type,
+          severity: newAlert.severity,
+          message: newAlert.message,
+          status: 'active',
+          acknowledged: false
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await logAction('CREATE_ALERT', 'alert', data.id, {
+        alert_type: newAlert.type,
+        severity: newAlert.severity
+      });
+
+      toast({
+        title: "Alert Created",
+        description: "New alert rule has been created successfully.",
+      });
+
+      setNewAlert({ device_id: "", type: "threshold", severity: "medium", message: "" });
+      setShowCreateAlert(false);
+    } catch (error) {
+      console.error('Error creating alert:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create alert",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const saveNotificationSettings = async () => {
+    try {
+      const { error } = await supabase
+        .from('notification_settings')
+        .upsert({
+          user_id: user?.id,
+          ...notificationSettings,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+
+      await logAction('UPDATE_NOTIFICATION_SETTINGS', 'notification_settings', user?.id);
+
+      toast({
+        title: "Settings Saved",
+        description: "Notification preferences have been updated.",
+      });
+
+      setShowNotificationSettings(false);
+    } catch (error) {
+      console.error('Error saving notification settings:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save notification settings",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'critical': return 'bg-red-100 text-red-800';
+      case 'high': return 'bg-orange-100 text-orange-800';
+      case 'medium': return 'bg-yellow-100 text-yellow-800';
+      case 'low': return 'bg-blue-100 text-blue-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -120,155 +195,220 @@ export const AlertsPanel = () => {
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Alert Management</h2>
-          <p className="text-muted-foreground">Monitor and manage system alerts and notifications</p>
+          <p className="text-muted-foreground">Monitor system alerts and configure notifications</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
-            <Bell className="w-4 h-4 mr-2" />
-            Configure Notifications
-          </Button>
-          <Button className="bg-gradient-to-r from-blue-600 to-cyan-600">
-            <Plus className="w-4 h-4 mr-2" />
-            Create Alert Rule
-          </Button>
-        </div>
-      </div>
+          <Dialog open={showCreateAlert} onOpenChange={setShowCreateAlert}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Alert Rule
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create Alert Rule</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={createAlert} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Device (Optional)</Label>
+                  <Select value={newAlert.device_id} onValueChange={(value) => setNewAlert({...newAlert, device_id: value})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select device or leave blank for system-wide" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {devices.map((device: any) => (
+                        <SelectItem key={device.id} value={device.id}>
+                          {device.name} ({device.type})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-      {/* Alert Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Active Alerts</p>
-                <p className="text-2xl font-bold text-red-600">3</p>
-              </div>
-              <AlertTriangle className="w-8 h-8 text-red-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Resolved Today</p>
-                <p className="text-2xl font-bold text-green-600">12</p>
-              </div>
-              <Check className="w-8 h-8 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Avg Resolution</p>
-                <p className="text-2xl font-bold">4.2h</p>
-              </div>
-              <Clock className="w-8 h-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Notifications Sent</p>
-                <p className="text-2xl font-bold">28</p>
-              </div>
-              <Mail className="w-8 h-8 text-purple-600" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                <div className="space-y-2">
+                  <Label>Alert Type</Label>
+                  <Select value={newAlert.type} onValueChange={(value) => setNewAlert({...newAlert, type: value})}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="threshold">Threshold Alert</SelectItem>
+                      <SelectItem value="connectivity">Connectivity Alert</SelectItem>
+                      <SelectItem value="performance">Performance Alert</SelectItem>
+                      <SelectItem value="security">Security Alert</SelectItem>
+                      <SelectItem value="maintenance">Maintenance Alert</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-      {/* Filters and Tabs */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search alerts..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <select
-            value={selectedSeverity}
-            onChange={(e) => setSelectedSeverity(e.target.value)}
-            className="px-3 py-2 border border-input bg-background rounded-md text-sm"
-          >
-            <option value="all">All Severities</option>
-            <option value="high">Critical</option>
-            <option value="medium">Warning</option>
-            <option value="low">Info</option>
-          </select>
-        </div>
+                <div className="space-y-2">
+                  <Label>Severity</Label>
+                  <Select value={newAlert.severity} onValueChange={(value) => setNewAlert({...newAlert, severity: value})}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="critical">Critical</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="active">Active ({mockAlerts.filter(a => a.status === 'active').length})</TabsTrigger>
-            <TabsTrigger value="investigating">Investigating ({mockAlerts.filter(a => a.status === 'investigating').length})</TabsTrigger>
-            <TabsTrigger value="resolved">Resolved ({mockAlerts.filter(a => a.status === 'resolved').length})</TabsTrigger>
-            <TabsTrigger value="all">All Alerts</TabsTrigger>
-          </TabsList>
+                <div className="space-y-2">
+                  <Label>Message</Label>
+                  <Textarea
+                    value={newAlert.message}
+                    onChange={(e) => setNewAlert({...newAlert, message: e.target.value})}
+                    placeholder="Describe the alert condition..."
+                    required
+                  />
+                </div>
 
-          <TabsContent value={activeTab} className="mt-6">
-            <div className="space-y-4">
-              {filteredAlerts.map((alert) => (
-                <Card key={alert.id} className={`hover:shadow-md transition-shadow ${
-                  alert.severity === 'high' ? 'border-l-4 border-l-red-500' :
-                  alert.severity === 'medium' ? 'border-l-4 border-l-yellow-500' :
-                  'border-l-4 border-l-blue-500'
-                }`}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          {getSeverityBadge(alert.severity)}
-                          {getStatusBadge(alert.status)}
-                          <span className="text-sm text-muted-foreground">#{alert.id}</span>
-                        </div>
-                        
-                        <h3 className="font-semibold text-lg mb-1">{alert.device}</h3>
-                        <p className="text-muted-foreground mb-2">{alert.message}</p>
-                        
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span>{alert.timestamp}</span>
-                          {alert.acknowledged && (
-                            <span className="flex items-center gap-1">
-                              <Check className="w-3 h-3" />
-                              Acknowledged
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        {!alert.acknowledged && alert.status === 'active' && (
-                          <Button size="sm" variant="outline">
-                            <Check className="w-4 h-4 mr-1" />
-                            Acknowledge
-                          </Button>
-                        )}
-                        {alert.status === 'active' && (
-                          <Button size="sm" variant="outline">
-                            <X className="w-4 h-4 mr-1" />
-                            Resolve
-                          </Button>
-                        )}
-                        <Button size="sm" variant="ghost">
-                          <Mail className="w-4 h-4" />
-                        </Button>
-                      </div>
+                <div className="flex justify-end space-x-2">
+                  <Button type="button" variant="outline" onClick={() => setShowCreateAlert(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">Create Alert</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={showNotificationSettings} onOpenChange={setShowNotificationSettings}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Settings className="w-4 h-4 mr-2" />
+                Configure Notifications
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Notification Settings</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Mail className="w-4 h-4" />
+                      <Label>Email Notifications</Label>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-        </Tabs>
+                    <Switch
+                      checked={notificationSettings.email_notifications}
+                      onCheckedChange={(checked) => setNotificationSettings({
+                        ...notificationSettings,
+                        email_notifications: checked
+                      })}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <MessageSquare className="w-4 h-4" />
+                      <Label>SMS Notifications</Label>
+                    </div>
+                    <Switch
+                      checked={notificationSettings.sms_notifications}
+                      onCheckedChange={(checked) => setNotificationSettings({
+                        ...notificationSettings,
+                        sms_notifications: checked
+                      })}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Bell className="w-4 h-4" />
+                      <Label>Push Notifications</Label>
+                    </div>
+                    <Switch
+                      checked={notificationSettings.push_notifications}
+                      onCheckedChange={(checked) => setNotificationSettings({
+                        ...notificationSettings,
+                        push_notifications: checked
+                      })}
+                    />
+                  </div>
+                </div>
+
+                {notificationSettings.sms_notifications && (
+                  <div className="space-y-2">
+                    <Label>Phone Number</Label>
+                    <Input
+                      value={notificationSettings.phone_number}
+                      onChange={(e) => setNotificationSettings({
+                        ...notificationSettings,
+                        phone_number: e.target.value
+                      })}
+                      placeholder="+1234567890"
+                    />
+                  </div>
+                )}
+
+                <div className="flex justify-end space-x-2">
+                  <Button variant="outline" onClick={() => setShowNotificationSettings(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={saveNotificationSettings}>
+                    Save Settings
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {/* Alerts List */}
+      <div className="grid gap-4">
+        {alerts.length === 0 ? (
+          <Card>
+            <CardContent className="text-center py-12">
+              <AlertTriangle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No Active Alerts</h3>
+              <p className="text-muted-foreground">Your system is running smoothly!</p>
+            </CardContent>
+          </Card>
+        ) : (
+          alerts.map((alert) => (
+            <Card key={alert.id} className="border-l-4 border-l-red-500">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Badge className={getSeverityColor(alert.severity)}>
+                        {alert.severity}
+                      </Badge>
+                      <Badge variant="outline">{alert.type}</Badge>
+                    </div>
+                    <p className="font-medium mb-1">{alert.message}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(alert.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {!alert.acknowledged ? (
+                      <Button
+                        size="sm"
+                        onClick={() => acknowledgeAlert(alert.id)}
+                      >
+                        <Check className="w-4 h-4 mr-1" />
+                        Acknowledge
+                      </Button>
+                    ) : (
+                      <Badge variant="secondary">
+                        <Check className="w-3 h-3 mr-1" />
+                        Acknowledged
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
     </div>
   );

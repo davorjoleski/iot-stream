@@ -3,7 +3,6 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -22,38 +21,148 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
-export const ControlPanel = () => {
-  const [selectedDevice, setSelectedDevice] = useState("DEV-001");
+interface Device {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  telemetry_data: any;
+  configuration: any;
+}
+
+interface ControlPanelProps {
+  devices: Device[];
+}
+
+export const ControlPanel = ({ devices }: ControlPanelProps) => {
+  const [selectedDevice, setSelectedDevice] = useState(devices[0]?.id || "");
   const [customCommand, setCustomCommand] = useState("");
   const [temperature, setTemperature] = useState([22]);
   const [fanSpeed, setFanSpeed] = useState([50]);
   const [lightBrightness, setLightBrightness] = useState([75]);
   const [devicePower, setDevicePower] = useState(true);
   const { toast } = useToast();
+  const { logAction } = useAuditLog();
 
-  const devices = [
-    { id: "DEV-001", name: "Temperature Sensor A1", type: "sensor", status: "online" },
-    { id: "DEV-002", name: "Cooling System F6", type: "hvac", status: "online" },
-    { id: "DEV-003", name: "Motor Controller E5", type: "motor", status: "online" },
-    { id: "DEV-004", name: "LED Panel G7", type: "lighting", status: "online" },
-    { id: "DEV-005", name: "Pump Station H8", type: "pump", status: "offline" }
-  ];
+  const selectedDeviceData = devices.find(d => d.id === selectedDevice);
 
-  const sendCommand = (command: string, params?: any) => {
+  const sendCommand = async (command: string, params?: any) => {
+    if (!selectedDeviceData) return;
+
     console.log(`Sending command: ${command}`, params);
-    toast({
-      title: "Command Sent",
-      description: `${command} command sent to ${selectedDevice}`,
-    });
+    
+    try {
+      // Log the command
+      await logAction('SEND_COMMAND', 'device', selectedDevice, {
+        command,
+        parameters: params,
+        device_name: selectedDeviceData.name
+      });
+
+      // Update device status or configuration based on command
+      let updateData: any = { updated_at: new Date().toISOString() };
+
+      switch (command) {
+        case 'POWER_ON':
+        case 'POWER_OFF':
+          updateData.status = command === 'POWER_ON' ? 'online' : 'offline';
+          break;
+        case 'SET_TEMPERATURE':
+        case 'SET_FAN_SPEED':
+        case 'SET_BRIGHTNESS':
+          // Update configuration
+          updateData.configuration = {
+            ...selectedDeviceData.configuration,
+            [command.toLowerCase()]: params
+          };
+          break;
+      }
+
+      if (Object.keys(updateData).length > 1) {
+        const { error } = await supabase
+          .from('devices')
+          .update(updateData)
+          .eq('id', selectedDevice);
+
+        if (error) throw error;
+      }
+
+      toast({
+        title: "Command Sent",
+        description: `${command} command sent to ${selectedDeviceData.name}`,
+      });
+    } catch (error) {
+      console.error('Error sending command:', error);
+      toast({
+        title: "Command Failed",
+        description: "Failed to send command to device",
+        variant: "destructive",
+      });
+    }
   };
 
-  const sendCustomCommand = () => {
+  const sendAdvancedCommand = async (command: string) => {
+    if (!selectedDeviceData) return;
+
+    try {
+      await logAction('ADVANCED_COMMAND', 'device', selectedDevice, {
+        command,
+        device_name: selectedDeviceData.name
+      });
+
+      // Simulate command execution
+      let updateData: any = { 
+        updated_at: new Date().toISOString(),
+        status: 'maintenance' // Temporarily set to maintenance during operation
+      };
+
+      const { error } = await supabase
+        .from('devices')
+        .update(updateData)
+        .eq('id', selectedDevice);
+
+      if (error) throw error;
+
+      toast({
+        title: "Advanced Command Executed",
+        description: `${command} initiated on ${selectedDeviceData.name}`,
+      });
+
+      // Simulate command completion after 3 seconds
+      setTimeout(async () => {
+        await supabase
+          .from('devices')
+          .update({ 
+            status: 'online',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', selectedDevice);
+
+        toast({
+          title: "Command Completed",
+          description: `${command} completed successfully`,
+        });
+      }, 3000);
+
+    } catch (error) {
+      console.error('Error executing advanced command:', error);
+      toast({
+        title: "Command Failed",
+        description: "Failed to execute advanced command",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const sendCustomCommand = async () => {
     if (!customCommand.trim()) return;
     
     try {
-      JSON.parse(customCommand); // Validate JSON
-      sendCommand("Custom JSON", JSON.parse(customCommand));
+      JSON.parse(customCommand);
+      await sendCommand("Custom JSON", JSON.parse(customCommand));
       setCustomCommand("");
     } catch (error) {
       toast({
@@ -63,6 +172,16 @@ export const ControlPanel = () => {
       });
     }
   };
+
+  if (devices.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <Settings className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+        <h3 className="text-lg font-semibold mb-2">No Devices Available</h3>
+        <p className="text-muted-foreground">Add devices to start controlling them.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -102,7 +221,7 @@ export const ControlPanel = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="font-medium text-sm">{device.name}</div>
-                      <div className="text-xs text-muted-foreground">{device.id}</div>
+                      <div className="text-xs text-muted-foreground">{device.type}</div>
                     </div>
                     <Badge 
                       variant={device.status === "online" ? "secondary" : "destructive"}
@@ -125,7 +244,7 @@ export const ControlPanel = () => {
               <span>Device Controls</span>
             </CardTitle>
             <CardDescription>
-              Control settings for {devices.find(d => d.id === selectedDevice)?.name}
+              Control settings for {selectedDeviceData?.name}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -140,16 +259,15 @@ export const ControlPanel = () => {
                 {/* Power Control */}
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex items-center space-x-3">
-                    <Power className={`w-5 h-5 ${devicePower ? "text-green-600" : "text-gray-400"}`} />
+                    <Power className={`w-5 h-5 ${selectedDeviceData?.status === 'online' ? "text-green-600" : "text-gray-400"}`} />
                     <div>
                       <div className="font-medium">Device Power</div>
                       <div className="text-sm text-muted-foreground">Turn device on/off</div>
                     </div>
                   </div>
                   <Switch 
-                    checked={devicePower} 
+                    checked={selectedDeviceData?.status === 'online'} 
                     onCheckedChange={(checked) => {
-                      setDevicePower(checked);
                       sendCommand(checked ? "POWER_ON" : "POWER_OFF");
                     }}
                   />
@@ -227,38 +345,59 @@ export const ControlPanel = () => {
 
               <TabsContent value="advanced" className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <Button onClick={() => sendCommand("RESTART")} className="w-full">
+                  <Button 
+                    onClick={() => sendAdvancedCommand("RESTART_DEVICE")} 
+                    className="w-full"
+                    disabled={selectedDeviceData?.status !== 'online'}
+                  >
                     <RotateCcw className="w-4 h-4 mr-2" />
                     Restart Device
                   </Button>
-                  <Button onClick={() => sendCommand("CALIBRATE")} variant="outline" className="w-full">
+                  <Button 
+                    onClick={() => sendAdvancedCommand("CALIBRATE_SENSORS")} 
+                    variant="outline" 
+                    className="w-full"
+                    disabled={selectedDeviceData?.status !== 'online'}
+                  >
                     <Settings className="w-4 h-4 mr-2" />
                     Calibrate Sensors
                   </Button>
-                  <Button onClick={() => sendCommand("RESET_FACTORY")} variant="destructive" className="w-full">
+                  <Button 
+                    onClick={() => sendAdvancedCommand("FACTORY_RESET")} 
+                    variant="destructive" 
+                    className="w-full"
+                    disabled={selectedDeviceData?.status !== 'online'}
+                  >
                     <Power className="w-4 h-4 mr-2" />
                     Factory Reset
                   </Button>
-                  <Button onClick={() => sendCommand("RUN_DIAGNOSTICS")} variant="outline" className="w-full">
+                  <Button 
+                    onClick={() => sendAdvancedCommand("RUN_DIAGNOSTICS")} 
+                    variant="outline" 
+                    className="w-full"
+                    disabled={selectedDeviceData?.status !== 'online'}
+                  >
                     <Play className="w-4 h-4 mr-2" />
                     Run Diagnostics
                   </Button>
                 </div>
 
                 <div className="p-4 border rounded-lg">
-                  <h4 className="font-medium mb-3">Recent Commands</h4>
+                  <h4 className="font-medium mb-3">Device Status</h4>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between items-center p-2 bg-muted/50 rounded">
-                      <span>SET_TEMPERATURE</span>
-                      <span className="text-muted-foreground">2 min ago</span>
+                      <span>Current Status</span>
+                      <Badge variant={selectedDeviceData?.status === 'online' ? 'secondary' : 'destructive'}>
+                        {selectedDeviceData?.status}
+                      </Badge>
                     </div>
                     <div className="flex justify-between items-center p-2 bg-muted/50 rounded">
-                      <span>POWER_ON</span>
-                      <span className="text-muted-foreground">5 min ago</span>
+                      <span>Device Type</span>
+                      <span className="text-muted-foreground">{selectedDeviceData?.type}</span>
                     </div>
                     <div className="flex justify-between items-center p-2 bg-muted/50 rounded">
-                      <span>SET_FAN_SPEED</span>
-                      <span className="text-muted-foreground">8 min ago</span>
+                      <span>Last Updated</span>
+                      <span className="text-muted-foreground">Just now</span>
                     </div>
                   </div>
                 </div>
@@ -277,7 +416,7 @@ export const ControlPanel = () => {
                     className="font-mono text-sm"
                     rows={6}
                   />
-                  <Button onClick={sendCustomCommand} className="w-full">
+                  <Button onClick={sendCustomCommand} className="w-full" disabled={!customCommand.trim()}>
                     <Send className="w-4 h-4 mr-2" />
                     Send Command
                   </Button>
@@ -286,13 +425,16 @@ export const ControlPanel = () => {
                 <div className="p-4 border rounded-lg">
                   <h4 className="font-medium mb-3">Command Examples</h4>
                   <div className="space-y-2 text-sm">
-                    <div className="p-2 bg-muted/50 rounded font-mono">
+                    <div className="p-2 bg-muted/50 rounded font-mono cursor-pointer" 
+                         onClick={() => setCustomCommand('{"command": "SET_SCHEDULE", "time": "14:30"}')}>
                       {`{"command": "SET_SCHEDULE", "time": "14:30"}`}
                     </div>
-                    <div className="p-2 bg-muted/50 rounded font-mono">
+                    <div className="p-2 bg-muted/50 rounded font-mono cursor-pointer"
+                         onClick={() => setCustomCommand('{"action": "TOGGLE", "target": "all"}')}>
                       {`{"action": "TOGGLE", "target": "all"}`}
                     </div>
-                    <div className="p-2 bg-muted/50 rounded font-mono">
+                    <div className="p-2 bg-muted/50 rounded font-mono cursor-pointer"
+                         onClick={() => setCustomCommand('{"mode": "emergency", "priority": "high"}')}>
                       {`{"mode": "emergency", "priority": "high"}`}
                     </div>
                   </div>
