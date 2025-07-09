@@ -2,15 +2,17 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { DashboardStats } from "@/components/dashboard/DashboardStats";
-import { DeviceGrid } from "@/components/devices/DeviceGrid";
+import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import { DeviceManagement } from "@/components/devices/DeviceManagement";
 import { TelemetryChart } from "@/components/telemetry/TelemetryChart";
 import { AlertsPanel } from "@/components/alerts/AlertsPanel";
 import { ControlPanel } from "@/components/control/ControlPanel";
 import { AuditLogViewer } from "@/components/audit/AuditLogViewer";
+import { WebSocketManager } from "@/components/websocket/WebSocketManager";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Activity, Settings, Bell, BarChart3, Shield, LogOut } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Activity, Settings, Bell, BarChart3, Shield, LogOut, Wifi, WifiOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -20,41 +22,43 @@ const Index = () => {
   const [devices, setDevices] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState(null);
+  const [wsConnected, setWsConnected] = useState(false);
 
   useEffect(() => {
     if (!user) return;
 
-    // Fetch devices and alerts
-    const fetchData = async () => {
-      try {
-        const { data: devicesData } = await supabase
-          .from('devices')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        const { data: alertsData } = await supabase
-          .from('alerts')
-          .select('*')
-          .eq('status', 'active')
-          .order('created_at', { ascending: false });
-
-        setDevices(devicesData || []);
-        setAlerts(alertsData || []);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      }
-    };
-
     fetchData();
+    setupRealtimeSubscriptions();
+  }, [user, toast]);
 
-    // Set up real-time subscriptions
+  const fetchData = async () => {
+    try {
+      const { data: devicesData } = await supabase
+        .from('devices')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      const { data: alertsData } = await supabase
+        .from('alerts')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+
+      setDevices(devicesData || []);
+      setAlerts(alertsData || []);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    }
+  };
+
+  const setupRealtimeSubscriptions = () => {
     const devicesChannel = supabase
       .channel('devices-changes')
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'devices' },
         (payload) => {
           console.log('Device change:', payload);
-          fetchData(); // Refetch on changes
+          fetchData();
         }
       )
       .subscribe();
@@ -65,7 +69,7 @@ const Index = () => {
         { event: '*', schema: 'public', table: 'alerts' },
         (payload) => {
           console.log('Alert change:', payload);
-          fetchData(); // Refetch on changes
+          fetchData();
           
           if (payload.eventType === 'INSERT') {
             toast({
@@ -82,7 +86,7 @@ const Index = () => {
       supabase.removeChannel(devicesChannel);
       supabase.removeChannel(alertsChannel);
     };
-  }, [user, toast]);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -92,10 +96,13 @@ const Index = () => {
     });
   };
 
-  // Calculate dashboard statistics
-  const activeDevices = devices.filter((device: any) => device.status === 'online').length;
-  const totalDevices = devices.length;
-  const criticalAlerts = alerts.filter((alert: any) => alert.severity === 'critical').length;
+  const handleWebSocketMessage = (message: any) => {
+    console.log('WebSocket message:', message);
+    // Handle real-time updates from WebSocket
+    if (message.type === 'device_update' || message.type === 'telemetry') {
+      fetchData();
+    }
+  };
 
   if (loading) {
     return (
@@ -114,6 +121,12 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-blue-950">
+      {/* WebSocket Connection Manager */}
+      <WebSocketManager 
+        onMessage={handleWebSocketMessage}
+        onStatusChange={setWsConnected}
+      />
+      
       {/* Header */}
       <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -127,12 +140,18 @@ const Index = () => {
           </div>
           
           <div className="flex items-center space-x-4">
-            <span className="text-sm text-muted-foreground">
+            {/* WebSocket Status */}
+            <Badge variant={wsConnected ? "default" : "destructive"} className="hidden sm:flex">
+              {wsConnected ? <Wifi className="w-3 h-3 mr-1" /> : <WifiOff className="w-3 h-3 mr-1" />}
+              {wsConnected ? "Connected" : "Disconnected"}
+            </Badge>
+            
+            <span className="text-sm text-muted-foreground hidden md:block">
               Welcome, {user.email}
             </span>
             <Button onClick={handleSignOut} variant="outline" size="sm">
               <LogOut className="w-4 h-4 mr-2" />
-              Sign Out
+              <span className="hidden sm:inline">Sign Out</span>
             </Button>
           </div>
         </div>
@@ -140,7 +159,7 @@ const Index = () => {
 
       <div className="container mx-auto px-4 py-6">
         <Tabs defaultValue="dashboard" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:grid-cols-6">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 lg:w-auto lg:grid-cols-6">
             <TabsTrigger value="dashboard" className="flex items-center space-x-2">
               <BarChart3 className="w-4 h-4" />
               <span className="hidden sm:inline">Dashboard</span>
@@ -168,26 +187,20 @@ const Index = () => {
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-6">
-            <DashboardStats 
-              activeDevices={activeDevices}
-              totalDevices={totalDevices}
-              criticalAlerts={criticalAlerts}
-            />
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <TelemetryChart />
-            </div>
+            <DashboardOverview devices={devices} alerts={alerts} />
           </TabsContent>
 
           <TabsContent value="devices">
-            <DeviceGrid 
+            <DeviceManagement 
               devices={devices} 
               onDeviceSelect={setSelectedDevice}
               selectedDevice={selectedDevice}
+              onDevicesChange={fetchData}
             />
           </TabsContent>
 
           <TabsContent value="control">
-            <ControlPanel devices={devices} />
+            <ControlPanel devices={devices} onDevicesChange={fetchData} />
           </TabsContent>
 
           <TabsContent value="alerts">
@@ -195,7 +208,10 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="analytics">
-            <TelemetryChart />
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold">Advanced Analytics</h2>
+              <TelemetryChart />
+            </div>
           </TabsContent>
 
           <TabsContent value="audit">

@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,13 +9,22 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuditLog } from "@/hooks/useAuditLog";
 
-interface AddDeviceModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onDeviceAdded?: () => void;
+interface Device {
+  id: string;
+  name: string;
+  type: string;
+  location: string;
+  status: string;
 }
 
-export const AddDeviceModal = ({ open, onOpenChange, onDeviceAdded }: AddDeviceModalProps) => {
+interface EditDeviceModalProps {
+  device: Device;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onDeviceUpdated?: () => void;
+}
+
+export const EditDeviceModal = ({ device, open, onOpenChange, onDeviceUpdated }: EditDeviceModalProps) => {
   const [formData, setFormData] = useState({
     name: '',
     type: '',
@@ -25,6 +34,17 @@ export const AddDeviceModal = ({ open, onOpenChange, onDeviceAdded }: AddDeviceM
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const { logAction } = useAuditLog();
+
+  useEffect(() => {
+    if (device && open) {
+      setFormData({
+        name: device.name,
+        type: device.type,
+        location: device.location || '',
+        status: device.status
+      });
+    }
+  }, [device, open]);
 
   const deviceTypes = [
     'Temperature Sensor',
@@ -42,41 +62,42 @@ export const AddDeviceModal = ({ open, onOpenChange, onDeviceAdded }: AddDeviceM
     setIsSubmitting(true);
 
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('devices')
-        .insert([{
+        .update({
           name: formData.name,
           type: formData.type,
           location: formData.location,
           status: formData.status,
-          configuration: {},
-          telemetry_data: {},
-          created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
+        })
+        .eq('id', device.id);
 
       if (error) throw error;
 
-      await logAction('CREATE_DEVICE', 'device', data.id, {
+      await logAction('UPDATE_DEVICE', 'device', device.id, {
         device_name: formData.name,
-        device_type: formData.type
+        device_type: formData.type,
+        changes: {
+          name: { from: device.name, to: formData.name },
+          type: { from: device.type, to: formData.type },
+          location: { from: device.location, to: formData.location },
+          status: { from: device.status, to: formData.status }
+        }
       });
 
       toast({
-        title: "Device Added",
-        description: `${formData.name} has been successfully added to your IoT network.`,
+        title: "Device Updated",
+        description: `${formData.name} has been successfully updated.`,
       });
 
-      setFormData({ name: '', type: '', location: '', status: 'offline' });
-      onDeviceAdded?.();
+      onDeviceUpdated?.();
       onOpenChange(false);
     } catch (error) {
-      console.error('Error adding device:', error);
+      console.error('Error updating device:', error);
       toast({
         title: "Error",
-        description: "Failed to add device. Please try again.",
+        description: "Failed to update device. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -88,7 +109,7 @@ export const AddDeviceModal = ({ open, onOpenChange, onDeviceAdded }: AddDeviceM
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add New Device</DialogTitle>
+          <DialogTitle>Edit Device</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -130,7 +151,7 @@ export const AddDeviceModal = ({ open, onOpenChange, onDeviceAdded }: AddDeviceM
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="status">Initial Status</Label>
+            <Label htmlFor="status">Status</Label>
             <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value })}>
               <SelectTrigger>
                 <SelectValue />
@@ -138,6 +159,7 @@ export const AddDeviceModal = ({ open, onOpenChange, onDeviceAdded }: AddDeviceM
               <SelectContent>
                 <SelectItem value="online">Online</SelectItem>
                 <SelectItem value="offline">Offline</SelectItem>
+                <SelectItem value="warning">Warning</SelectItem>
                 <SelectItem value="maintenance">Maintenance</SelectItem>
               </SelectContent>
             </Select>
@@ -148,7 +170,7 @@ export const AddDeviceModal = ({ open, onOpenChange, onDeviceAdded }: AddDeviceM
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting || !formData.name || !formData.type}>
-              {isSubmitting ? 'Adding...' : 'Add Device'}
+              {isSubmitting ? 'Updating...' : 'Update Device'}
             </Button>
           </div>
         </form>

@@ -1,25 +1,28 @@
 
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Power, 
+  RotateCcw, 
   Settings, 
-  Zap, 
-  Thermometer, 
-  Fan, 
-  Lightbulb,
-  Send,
-  Code,
-  Play,
-  Pause,
-  RotateCcw
+  Play, 
+  Pause, 
+  AlertTriangle,
+  Zap,
+  Thermometer,
+  Activity,
+  RefreshCw,
+  Wrench,
+  Target,
+  Gauge
 } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuditLog } from "@/hooks/useAuditLog";
@@ -29,421 +32,382 @@ interface Device {
   name: string;
   type: string;
   status: string;
-  telemetry_data: any;
   configuration: any;
 }
 
 interface ControlPanelProps {
   devices: Device[];
+  onDevicesChange?: () => void;
 }
 
-export const ControlPanel = ({ devices }: ControlPanelProps) => {
-  const [selectedDevice, setSelectedDevice] = useState(devices[0]?.id || "");
+export const ControlPanel = ({ devices, onDevicesChange }: ControlPanelProps) => {
+  const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [customCommand, setCustomCommand] = useState("");
-  const [temperature, setTemperature] = useState([22]);
-  const [fanSpeed, setFanSpeed] = useState([50]);
-  const [lightBrightness, setLightBrightness] = useState([75]);
-  const [devicePower, setDevicePower] = useState(true);
+  const [commandOutput, setCommandOutput] = useState<string[]>([]);
+  const [isExecuting, setIsExecuting] = useState(false);
   const { toast } = useToast();
   const { logAction } = useAuditLog();
 
-  const selectedDeviceData = devices.find(d => d.id === selectedDevice);
+  const activeDevices = devices.filter(device => device.status === 'online');
 
-  const sendCommand = async (command: string, params?: any) => {
-    if (!selectedDeviceData) return;
-
-    console.log(`Sending command: ${command}`, params);
-    
+  const executeDeviceCommand = async (deviceId: string, command: string, parameters?: any) => {
+    setIsExecuting(true);
     try {
-      // Log the command
-      await logAction('SEND_COMMAND', 'device', selectedDevice, {
+      const device = devices.find(d => d.id === deviceId);
+      if (!device) throw new Error('Device not found');
+
+      // Simulate command execution with WebSocket/MQTT
+      const commandId = crypto.randomUUID();
+      const timestamp = new Date().toISOString();
+      
+      // Log the command execution
+      await logAction('DEVICE_COMMAND', 'device', deviceId, {
         command,
-        parameters: params,
-        device_name: selectedDeviceData.name
+        parameters,
+        device_name: device.name,
+        command_id: commandId
       });
 
-      // Update device status or configuration based on command
-      let updateData: any = { updated_at: new Date().toISOString() };
-
+      // Simulate different command responses
+      let response = '';
+      let newStatus = device.status;
+      
       switch (command) {
-        case 'POWER_ON':
-        case 'POWER_OFF':
-          updateData.status = command === 'POWER_ON' ? 'online' : 'offline';
+        case 'restart':
+          response = `Device ${device.name} restarting...`;
+          newStatus = 'offline';
+          setTimeout(async () => {
+            await supabase
+              .from('devices')
+              .update({ 
+                status: 'online', 
+                last_seen: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', deviceId);
+            onDevicesChange?.();
+            addCommandOutput(`Device ${device.name} restarted successfully`);
+          }, 3000);
           break;
-        case 'SET_TEMPERATURE':
-        case 'SET_FAN_SPEED':
-        case 'SET_BRIGHTNESS':
-          // Update configuration
-          updateData.configuration = {
-            ...selectedDeviceData.configuration,
-            [command.toLowerCase()]: params
-          };
+          
+        case 'factory_reset':
+          response = `Factory reset initiated for ${device.name}`;
+          newStatus = 'maintenance';
+          setTimeout(async () => {
+            await supabase
+              .from('devices')
+              .update({ 
+                status: 'online',
+                configuration: {},
+                last_seen: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', deviceId);
+            onDevicesChange?.();
+            addCommandOutput(`Factory reset completed for ${device.name}`);
+          }, 5000);
           break;
+          
+        case 'calibrate':
+          response = `Calibrating sensors on ${device.name}...`;
+          setTimeout(() => {
+            addCommandOutput(`Sensor calibration completed for ${device.name}`);
+          }, 2000);
+          break;
+          
+        case 'diagnostics':
+          response = `Running diagnostics on ${device.name}...`;
+          setTimeout(() => {
+            addCommandOutput(`Diagnostics completed for ${device.name}:
+- CPU Usage: 45%
+- Memory Usage: 62%
+- Network Latency: 12ms
+- Sensor Status: OK
+- Last Error: None`);
+          }, 3000);
+          break;
+          
+        case 'power_off':
+          response = `Powering off ${device.name}`;
+          newStatus = 'offline';
+          break;
+          
+        case 'power_on':
+          response = `Powering on ${device.name}`;
+          newStatus = 'online';
+          break;
+          
+        default:
+          response = `Executing custom command "${command}" on ${device.name}`;
       }
 
-      if (Object.keys(updateData).length > 1) {
-        const { error } = await supabase
-          .from('devices')
-          .update(updateData)
-          .eq('id', selectedDevice);
-
-        if (error) throw error;
-      }
-
-      toast({
-        title: "Command Sent",
-        description: `${command} command sent to ${selectedDeviceData.name}`,
-      });
-    } catch (error) {
-      console.error('Error sending command:', error);
-      toast({
-        title: "Command Failed",
-        description: "Failed to send command to device",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const sendAdvancedCommand = async (command: string) => {
-    if (!selectedDeviceData) return;
-
-    try {
-      await logAction('ADVANCED_COMMAND', 'device', selectedDevice, {
-        command,
-        device_name: selectedDeviceData.name
-      });
-
-      // Simulate command execution
-      let updateData: any = { 
-        updated_at: new Date().toISOString(),
-        status: 'maintenance' // Temporarily set to maintenance during operation
-      };
-
-      const { error } = await supabase
-        .from('devices')
-        .update(updateData)
-        .eq('id', selectedDevice);
-
-      if (error) throw error;
-
-      toast({
-        title: "Advanced Command Executed",
-        description: `${command} initiated on ${selectedDeviceData.name}`,
-      });
-
-      // Simulate command completion after 3 seconds
-      setTimeout(async () => {
+      // Update device status if changed
+      if (newStatus !== device.status) {
         await supabase
           .from('devices')
           .update({ 
-            status: 'online',
-            updated_at: new Date().toISOString()
+            status: newStatus,
+            updated_at: new Date().toISOString(),
+            last_seen: newStatus === 'online' ? new Date().toISOString() : device.last_seen
           })
-          .eq('id', selectedDevice);
+          .eq('id', deviceId);
+        onDevicesChange?.();
+      }
 
-        toast({
-          title: "Command Completed",
-          description: `${command} completed successfully`,
-        });
-      }, 3000);
+      addCommandOutput(response);
+      
+      toast({
+        title: "Command Executed",
+        description: `${command} command sent to ${device.name}`,
+      });
 
     } catch (error) {
-      console.error('Error executing advanced command:', error);
+      console.error('Error executing command:', error);
+      addCommandOutput(`Error: ${error.message}`);
       toast({
         title: "Command Failed",
-        description: "Failed to execute advanced command",
+        description: `Failed to execute ${command}`,
         variant: "destructive",
       });
+    } finally {
+      setIsExecuting(false);
     }
   };
 
-  const sendCustomCommand = async () => {
-    if (!customCommand.trim()) return;
+  const addCommandOutput = (output: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setCommandOutput(prev => [...prev, `[${timestamp}] ${output}`]);
+  };
+
+  const executeCustomCommand = async () => {
+    if (!selectedDevice || !customCommand.trim()) return;
     
-    try {
-      JSON.parse(customCommand);
-      await sendCommand("Custom JSON", JSON.parse(customCommand));
-      setCustomCommand("");
-    } catch (error) {
-      toast({
-        title: "Invalid JSON",
-        description: "Please enter valid JSON command",
-        variant: "destructive",
-      });
-    }
+    await executeDeviceCommand(selectedDevice, customCommand.trim());
+    setCustomCommand("");
   };
 
-  if (devices.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <Settings className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-        <h3 className="text-lg font-semibold mb-2">No Devices Available</h3>
-        <p className="text-muted-foreground">Add devices to start controlling them.</p>
-      </div>
-    );
-  }
+  const clearOutput = () => {
+    setCommandOutput([]);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold">Device Control Center</h2>
-          <p className="text-muted-foreground">Send commands and control connected IoT devices</p>
+          <h2 className="text-2xl font-bold">Device Control Panel</h2>
+          <p className="text-muted-foreground">Remote control and management of IoT devices</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="bg-green-50 text-green-700">
-            <Zap className="w-3 h-3 mr-1" />
-            Real-time Control
-          </Badge>
-        </div>
+        <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+          {activeDevices.length} Devices Online
+        </Badge>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Device Selection */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Select Device</CardTitle>
-            <CardDescription>Choose a device to control</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {devices.map((device) => (
-                <div
-                  key={device.id}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                    selectedDevice === device.id
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
-                      : "border-border hover:border-muted-foreground"
-                  }`}
-                  onClick={() => setSelectedDevice(device.id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium text-sm">{device.name}</div>
-                      <div className="text-xs text-muted-foreground">{device.type}</div>
-                    </div>
-                    <Badge 
-                      variant={device.status === "online" ? "secondary" : "destructive"}
-                      className={device.status === "online" ? "bg-green-100 text-green-800" : ""}
+      <Tabs defaultValue="quick-actions" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="quick-actions">Quick Actions</TabsTrigger>
+          <TabsTrigger value="advanced">Advanced Controls</TabsTrigger>
+          <TabsTrigger value="automation">Automation</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="quick-actions" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {activeDevices.map((device) => (
+              <Card key={device.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Activity className="w-5 h-5 text-blue-600" />
+                    <span className="truncate">{device.name}</span>
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">{device.type}</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => executeDeviceCommand(device.id, 'restart')}
+                      disabled={isExecuting}
+                      className="text-xs"
                     >
-                      {device.status}
-                    </Badge>
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                      Restart
+                    </Button>
+                    
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => executeDeviceCommand(device.id, 'diagnostics')}
+                      disabled={isExecuting}
+                      className="text-xs"
+                    >
+                      <Gauge className="w-3 h-3 mr-1" />
+                      Diagnostics
+                    </Button>
+                    
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => executeDeviceCommand(device.id, 'calibrate')}
+                      disabled={isExecuting}
+                      className="text-xs"
+                    >
+                      <Target className="w-3 h-3 mr-1" />
+                      Calibrate
+                    </Button>
+                    
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="outline" className="text-xs">
+                          <Wrench className="w-3 h-3 mr-1" />
+                          Advanced
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Advanced Controls - {device.name}</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              variant="destructive"
+                              onClick={() => executeDeviceCommand(device.id, 'factory_reset')}
+                              disabled={isExecuting}
+                            >
+                              <RotateCcw className="w-4 h-4 mr-2" />
+                              Factory Reset
+                            </Button>
+                            
+                            <Button
+                              variant="outline"
+                              onClick={() => executeDeviceCommand(device.id, 'power_off')}
+                              disabled={isExecuting}
+                            >
+                              <Power className="w-4 h-4 mr-2" />
+                              Power Off
+                            </Button>
+                          </div>
+                          
+                          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <div className="flex items-center space-x-2">
+                              <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                              <span className="text-sm font-medium text-yellow-800">Warning</span>
+                            </div>
+                            <p className="text-sm text-yellow-700 mt-1">
+                              Factory reset will erase all device configuration and data.
+                            </p>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Control Interface */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Settings className="w-5 h-5" />
-              <span>Device Controls</span>
-            </CardTitle>
-            <CardDescription>
-              Control settings for {selectedDeviceData?.name}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="quick" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="quick">Quick Controls</TabsTrigger>
-                <TabsTrigger value="advanced">Advanced</TabsTrigger>
-                <TabsTrigger value="custom">Custom Commands</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="quick" className="space-y-6">
-                {/* Power Control */}
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <Power className={`w-5 h-5 ${selectedDeviceData?.status === 'online' ? "text-green-600" : "text-gray-400"}`} />
-                    <div>
-                      <div className="font-medium">Device Power</div>
-                      <div className="text-sm text-muted-foreground">Turn device on/off</div>
-                    </div>
-                  </div>
-                  <Switch 
-                    checked={selectedDeviceData?.status === 'online'} 
-                    onCheckedChange={(checked) => {
-                      sendCommand(checked ? "POWER_ON" : "POWER_OFF");
-                    }}
-                  />
-                </div>
-
-                {/* Temperature Control */}
-                <div className="p-4 border rounded-lg space-y-3">
-                  <div className="flex items-center space-x-3">
-                    <Thermometer className="w-5 h-5 text-red-500" />
-                    <div className="flex-1">
-                      <div className="font-medium">Temperature Setting</div>
-                      <div className="text-sm text-muted-foreground">Set target temperature</div>
-                    </div>
-                    <div className="text-lg font-semibold">{temperature[0]}°C</div>
-                  </div>
-                  <Slider
-                    value={temperature}
-                    onValueChange={(value) => {
-                      setTemperature(value);
-                      sendCommand("SET_TEMPERATURE", { temperature: value[0] });
-                    }}
-                    max={35}
-                    min={15}
-                    step={1}
-                    className="w-full"
-                  />
-                </div>
-
-                {/* Fan Speed Control */}
-                <div className="p-4 border rounded-lg space-y-3">
-                  <div className="flex items-center space-x-3">
-                    <Fan className="w-5 h-5 text-blue-500" />
-                    <div className="flex-1">
-                      <div className="font-medium">Fan Speed</div>
-                      <div className="text-sm text-muted-foreground">Adjust cooling fan speed</div>
-                    </div>
-                    <div className="text-lg font-semibold">{fanSpeed[0]}%</div>
-                  </div>
-                  <Slider
-                    value={fanSpeed}
-                    onValueChange={(value) => {
-                      setFanSpeed(value);
-                      sendCommand("SET_FAN_SPEED", { speed: value[0] });
-                    }}
-                    max={100}
-                    min={0}
-                    step={5}
-                    className="w-full"
-                  />
-                </div>
-
-                {/* Lighting Control */}
-                <div className="p-4 border rounded-lg space-y-3">
-                  <div className="flex items-center space-x-3">
-                    <Lightbulb className="w-5 h-5 text-yellow-500" />
-                    <div className="flex-1">
-                      <div className="font-medium">Brightness</div>
-                      <div className="text-sm text-muted-foreground">Adjust LED brightness</div>
-                    </div>
-                    <div className="text-lg font-semibold">{lightBrightness[0]}%</div>
-                  </div>
-                  <Slider
-                    value={lightBrightness}
-                    onValueChange={(value) => {
-                      setLightBrightness(value);
-                      sendCommand("SET_BRIGHTNESS", { brightness: value[0] });
-                    }}
-                    max={100}
-                    min={0}
-                    step={1}
-                    className="w-full"
-                  />
-                </div>
-              </TabsContent>
-
-              <TabsContent value="advanced" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <Button 
-                    onClick={() => sendAdvancedCommand("RESTART_DEVICE")} 
-                    className="w-full"
-                    disabled={selectedDeviceData?.status !== 'online'}
+                  
+                  <Badge 
+                    variant={device.status === 'online' ? 'default' : 'destructive'}
+                    className="w-full justify-center"
                   >
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    Restart Device
-                  </Button>
-                  <Button 
-                    onClick={() => sendAdvancedCommand("CALIBRATE_SENSORS")} 
-                    variant="outline" 
-                    className="w-full"
-                    disabled={selectedDeviceData?.status !== 'online'}
-                  >
-                    <Settings className="w-4 h-4 mr-2" />
-                    Calibrate Sensors
-                  </Button>
-                  <Button 
-                    onClick={() => sendAdvancedCommand("FACTORY_RESET")} 
-                    variant="destructive" 
-                    className="w-full"
-                    disabled={selectedDeviceData?.status !== 'online'}
-                  >
-                    <Power className="w-4 h-4 mr-2" />
-                    Factory Reset
-                  </Button>
-                  <Button 
-                    onClick={() => sendAdvancedCommand("RUN_DIAGNOSTICS")} 
-                    variant="outline" 
-                    className="w-full"
-                    disabled={selectedDeviceData?.status !== 'online'}
-                  >
-                    <Play className="w-4 h-4 mr-2" />
-                    Run Diagnostics
-                  </Button>
-                </div>
+                    {device.status.toUpperCase()}
+                  </Badge>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
 
-                <div className="p-4 border rounded-lg">
-                  <h4 className="font-medium mb-3">Device Status</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between items-center p-2 bg-muted/50 rounded">
-                      <span>Current Status</span>
-                      <Badge variant={selectedDeviceData?.status === 'online' ? 'secondary' : 'destructive'}>
-                        {selectedDeviceData?.status}
-                      </Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-2 bg-muted/50 rounded">
-                      <span>Device Type</span>
-                      <span className="text-muted-foreground">{selectedDeviceData?.type}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-2 bg-muted/50 rounded">
-                      <span>Last Updated</span>
-                      <span className="text-muted-foreground">Just now</span>
-                    </div>
+        <TabsContent value="advanced" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Custom Command Execution</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Execute custom commands on selected devices
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="device-select">Select Device</Label>
+                  <Select value={selectedDevice} onValueChange={setSelectedDevice}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a device" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeDevices.map((device) => (
+                        <SelectItem key={device.id} value={device.id}>
+                          {device.name} ({device.type})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="custom-command">Custom Command</Label>
+                  <div className="flex space-x-2">
+                    <Input
+                      id="custom-command"
+                      value={customCommand}
+                      onChange={(e) => setCustomCommand(e.target.value)}
+                      placeholder="Enter command (e.g., set_temperature 25)"
+                      onKeyPress={(e) => e.key === 'Enter' && executeCustomCommand()}
+                    />
+                    <Button 
+                      onClick={executeCustomCommand}
+                      disabled={!selectedDevice || !customCommand.trim() || isExecuting}
+                    >
+                      Execute
+                    </Button>
                   </div>
                 </div>
-              </TabsContent>
+              </div>
+            </CardContent>
+          </Card>
 
-              <TabsContent value="custom" className="space-y-4">
-                <div className="p-4 border rounded-lg space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <Code className="w-4 h-4" />
-                    <h4 className="font-medium">Send Custom JSON Command</h4>
-                  </div>
-                  <Textarea
-                    placeholder='{"command": "SET_MODE", "parameters": {"mode": "auto", "duration": 3600}}'
-                    value={customCommand}
-                    onChange={(e) => setCustomCommand(e.target.value)}
-                    className="font-mono text-sm"
-                    rows={6}
-                  />
-                  <Button onClick={sendCustomCommand} className="w-full" disabled={!customCommand.trim()}>
-                    <Send className="w-4 h-4 mr-2" />
-                    Send Command
-                  </Button>
-                </div>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Command Output</CardTitle>
+              <Button variant="outline" size="sm" onClick={clearOutput}>
+                Clear
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-slate-900 text-green-400 p-4 rounded-lg font-mono text-sm max-h-64 overflow-y-auto">
+                {commandOutput.length === 0 ? (
+                  <p className="text-slate-400">No commands executed yet...</p>
+                ) : (
+                  commandOutput.map((line, index) => (
+                    <div key={index} className="mb-1">
+                      {line}
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-                <div className="p-4 border rounded-lg">
-                  <h4 className="font-medium mb-3">Command Examples</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="p-2 bg-muted/50 rounded font-mono cursor-pointer" 
-                         onClick={() => setCustomCommand('{"command": "SET_SCHEDULE", "time": "14:30"}')}>
-                      {`{"command": "SET_SCHEDULE", "time": "14:30"}`}
-                    </div>
-                    <div className="p-2 bg-muted/50 rounded font-mono cursor-pointer"
-                         onClick={() => setCustomCommand('{"action": "TOGGLE", "target": "all"}')}>
-                      {`{"action": "TOGGLE", "target": "all"}`}
-                    </div>
-                    <div className="p-2 bg-muted/50 rounded font-mono cursor-pointer"
-                         onClick={() => setCustomCommand('{"mode": "emergency", "priority": "high"}')}>
-                      {`{"mode": "emergency", "priority": "high"}`}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-      </div>
+        <TabsContent value="automation" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Automation Rules</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Create automated workflows for your devices
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-8">
+                <Settings className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Automation Engine</h3>
+                <p className="text-muted-foreground mb-4">
+                  Visual workflow builder coming soon. Create rules like "If temperature > 30°C, turn on cooling system"
+                </p>
+                <Button variant="outline">
+                  <Play className="w-4 h-4 mr-2" />
+                  Configure Automation
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
