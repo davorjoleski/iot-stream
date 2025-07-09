@@ -397,7 +397,7 @@ export const ControlPanel = ({ devices, onDevicesChange }: ControlPanelProps) =>
                 <Settings className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-lg font-semibold mb-2">Automation Engine</h3>
                 <p className="text-muted-foreground mb-4">
-                  Visual workflow builder coming soon. Create rules like "If temperature > 30°C, turn on cooling system"
+                  Visual workflow builder coming soon. Create rules like &quot;If temperature greater than 30°C, turn on cooling system&quot;
                 </p>
                 <Button variant="outline">
                   <Play className="w-4 h-4 mr-2" />
