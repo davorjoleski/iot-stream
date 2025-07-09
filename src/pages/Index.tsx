@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,10 +8,12 @@ import { AlertsPanel } from "@/components/alerts/AlertsPanel";
 import { ControlPanel } from "@/components/control/ControlPanel";
 import { AuditLogViewer } from "@/components/audit/AuditLogViewer";
 import { WebSocketManager } from "@/components/websocket/WebSocketManager";
+import { AdvancedAnalytics } from "@/components/analytics/AdvancedAnalytics";
+import { AutomationHub } from "@/components/automation/AutomationHub";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Activity, Settings, Bell, BarChart3, Shield, LogOut, Wifi, WifiOff } from "lucide-react";
+import { Activity, Settings, Bell, BarChart3, Shield, LogOut, Wifi, WifiOff, Zap, Cog } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -98,7 +99,6 @@ const Index = () => {
 
   const handleWebSocketMessage = (message: any) => {
     console.log('WebSocket message:', message);
-    // Handle real-time updates from WebSocket
     if (message.type === 'device_update' || message.type === 'telemetry') {
       fetchData();
     }
@@ -121,13 +121,11 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-blue-950">
-      {/* WebSocket Connection Manager */}
       <WebSocketManager 
         onMessage={handleWebSocketMessage}
         onStatusChange={setWsConnected}
       />
       
-      {/* Header */}
       <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -140,7 +138,6 @@ const Index = () => {
           </div>
           
           <div className="flex items-center space-x-4">
-            {/* WebSocket Status */}
             <Badge variant={wsConnected ? "default" : "destructive"} className="hidden sm:flex">
               {wsConnected ? <Wifi className="w-3 h-3 mr-1" /> : <WifiOff className="w-3 h-3 mr-1" />}
               {wsConnected ? "Connected" : "Disconnected"}
@@ -159,7 +156,7 @@ const Index = () => {
 
       <div className="container mx-auto px-4 py-6">
         <Tabs defaultValue="dashboard" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 lg:w-auto lg:grid-cols-6">
+          <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8 lg:w-auto lg:grid-cols-8">
             <TabsTrigger value="dashboard" className="flex items-center space-x-2">
               <BarChart3 className="w-4 h-4" />
               <span className="hidden sm:inline">Dashboard</span>
@@ -179,6 +176,14 @@ const Index = () => {
             <TabsTrigger value="analytics" className="flex items-center space-x-2">
               <BarChart3 className="w-4 h-4" />
               <span className="hidden sm:inline">Analytics</span>
+            </TabsTrigger>
+            <TabsTrigger value="automation" className="flex items-center space-x-2">
+              <Zap className="w-4 h-4" />
+              <span className="hidden sm:inline">Automation</span>
+            </TabsTrigger>
+            <TabsTrigger value="telemetry" className="flex items-center space-x-2">
+              <Activity className="w-4 h-4" />
+              <span className="hidden sm:inline">Telemetry</span>
             </TabsTrigger>
             <TabsTrigger value="audit" className="flex items-center space-x-2">
               <Shield className="w-4 h-4" />
@@ -208,8 +213,16 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="analytics">
+            <AdvancedAnalytics />
+          </TabsContent>
+
+          <TabsContent value="automation">
+            <AutomationHub />
+          </TabsContent>
+
+          <TabsContent value="telemetry">
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold">Advanced Analytics</h2>
+              <h2 className="text-2xl font-bold">Real-time Telemetry</h2>
               <TelemetryChart />
             </div>
           </TabsContent>
