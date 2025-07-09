@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,6 +11,7 @@ import { AuditLogViewer } from "@/components/audit/AuditLogViewer";
 import { WebSocketManager } from "@/components/websocket/WebSocketManager";
 import { AdvancedAnalytics } from "@/components/analytics/AdvancedAnalytics";
 import { AutomationHub } from "@/components/automation/AutomationHub";
+import { AutomationEngine } from "@/components/automation/AutomationEngine";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -125,6 +127,7 @@ const Index = () => {
         onMessage={handleWebSocketMessage}
         onStatusChange={setWsConnected}
       />
+      <AutomationEngine />
       
       <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -140,7 +143,7 @@ const Index = () => {
           <div className="flex items-center space-x-4">
             <Badge variant={wsConnected ? "default" : "destructive"} className="hidden sm:flex">
               {wsConnected ? <Wifi className="w-3 h-3 mr-1" /> : <WifiOff className="w-3 h-3 mr-1" />}
-              {wsConnected ? "Connected" : "Disconnected"}
+              {wsConnected ? "Live Data" : "Offline"}
             </Badge>
             
             <span className="text-sm text-muted-foreground hidden md:block">
@@ -221,10 +224,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="telemetry">
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold">Real-time Telemetry</h2>
-              <TelemetryChart />
-            </div>
+            <TelemetryChart />
           </TabsContent>
 
           <TabsContent value="audit">

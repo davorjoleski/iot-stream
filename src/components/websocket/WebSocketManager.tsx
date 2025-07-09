@@ -5,7 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 
 interface WebSocketMessage {
   type: string;
-  deviceId: string;
+  deviceId?: string;
   data: any;
   timestamp: string;
 }
@@ -23,20 +23,24 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
 
   const connect = () => {
     try {
-      // Create WebSocket connection to our edge function
+      // Use the correct WebSocket URL format for Supabase edge functions
       const wsUrl = `wss://mrwanozupkjsdesqevzd.supabase.co/functions/v1/websocket-handler`;
+      console.log('Attempting WebSocket connection to:', wsUrl);
+      
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('WebSocket connected successfully');
         setIsConnected(true);
         onStatusChange?.(true);
         
         // Send authentication message
-        wsRef.current?.send(JSON.stringify({
-          type: 'auth',
-          token: supabase.auth.getSession()
-        }));
+        if (wsRef.current) {
+          wsRef.current.send(JSON.stringify({
+            type: 'auth',
+            timestamp: new Date().toISOString()
+          }));
+        }
       };
 
       wsRef.current.onmessage = (event) => {
@@ -48,7 +52,6 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
           // Handle different message types
           switch (message.type) {
             case 'device_update':
-              // Device status or data update
               break;
             case 'alert':
               toast({
@@ -58,7 +61,9 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
               });
               break;
             case 'telemetry':
-              // Real-time telemetry data
+              break;
+            case 'connection':
+              console.log('Connection established:', message.data);
               break;
           }
         } catch (error) {
@@ -66,15 +71,18 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
         }
       };
 
-      wsRef.current.onclose = () => {
-        console.log('WebSocket disconnected');
+      wsRef.current.onclose = (event) => {
+        console.log('WebSocket disconnected:', event.code, event.reason);
         setIsConnected(false);
         onStatusChange?.(false);
         
-        // Attempt to reconnect after 3 seconds
-        reconnectTimeoutRef.current = window.setTimeout(() => {
-          connect();
-        }, 3000);
+        // Only attempt to reconnect if it wasn't a manual close
+        if (event.code !== 1000) {
+          reconnectTimeoutRef.current = window.setTimeout(() => {
+            console.log('Attempting to reconnect...');
+            connect();
+          }, 3000);
+        }
       };
 
       wsRef.current.onerror = (error) => {
@@ -92,7 +100,9 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }
-    wsRef.current?.close();
+    if (wsRef.current) {
+      wsRef.current.close(1000, 'Manual disconnect');
+    }
   };
 
   const sendMessage = (message: any) => {
@@ -109,7 +119,7 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
     };
   }, []);
 
-  return null; // This is a utility component that doesn't render anything
+  return null;
 };
 
 // Hook for using WebSocket in components
