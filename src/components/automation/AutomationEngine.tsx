@@ -52,7 +52,17 @@ export const AutomationEngine = () => {
         .eq('enabled', true);
 
       if (error) throw error;
-      rulesRef.current = data || [];
+      
+      // Transform the data to match our interface
+      const transformedRules: AutomationRule[] = (data || []).map(rule => ({
+        id: rule.id,
+        name: rule.name,
+        enabled: rule.enabled || false,
+        trigger_conditions: rule.trigger_conditions as any,
+        actions: rule.actions as any,
+      }));
+      
+      rulesRef.current = transformedRules;
     } catch (error) {
       console.error('Error loading automation rules:', error);
     }

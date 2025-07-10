@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -106,6 +107,13 @@ export const AdvancedAnalytics = () => {
     { time: '21:00', critical: 7, high: 23, medium: 16, low: 29 },
   ];
 
+  const alertResolutionData = [
+    { severity: 'Critical', resolutionTime: 15 },
+    { severity: 'High', resolutionTime: 45 },
+    { severity: 'Medium', resolutionTime: 120 },
+    { severity: 'Low', resolutionTime: 240 },
+  ];
+
   useEffect(() => {
     fetchAllData();
   }, [timeRange]);
@@ -139,20 +147,23 @@ export const AdvancedAnalytics = () => {
 
       if (error) throw error;
 
-      const processedData = data ? data.map(item => ({
-        time: item.timestamp,
-        temperature: item.temperature,
-        humidity: item.humidity,
-        pressure: item.pressure,
-        power: item.power,
-        voltage: item.voltage,
-        current: item.current,
-        co2: item.data?.co2,
-        light: item.data?.light,
-        noise: item.data?.noise,
-        uptime: 95 + Math.random() * 5,
-        efficiency: 70 + Math.random() * 30,
-      })) : [];
+      const processedData = data ? data.map(item => {
+        const dataJson = item.data as any;
+        return {
+          time: item.timestamp,
+          temperature: item.temperature,
+          humidity: item.humidity,
+          pressure: item.pressure,
+          power: item.power,
+          voltage: item.voltage,
+          current: item.current,
+          co2: dataJson?.co2,
+          light: dataJson?.light,
+          noise: dataJson?.noise,
+          uptime: 95 + Math.random() * 5,
+          efficiency: 70 + Math.random() * 30,
+        };
+      }) : [];
 
       setTelemetryData(processedData);
 

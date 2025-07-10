@@ -113,18 +113,21 @@ export const TelemetryChart = () => {
         const mockData = generateMockTelemetryData(hoursBack);
         setTelemetryData(mockData);
       } else {
-        setTelemetryData(data.map(item => ({
-          timestamp: item.timestamp,
-          temperature: item.temperature,
-          humidity: item.humidity,
-          pressure: item.pressure,
-          power: item.power,
-          voltage: item.voltage,
-          current: item.current,
-          co2: item.data?.co2,
-          light: item.data?.light,
-          noise: item.data?.noise,
-        })));
+        setTelemetryData(data.map(item => {
+          const dataJson = item.data as any;
+          return {
+            timestamp: item.timestamp,
+            temperature: item.temperature,
+            humidity: item.humidity,
+            pressure: item.pressure,
+            power: item.power,
+            voltage: item.voltage,
+            current: item.current,
+            co2: dataJson?.co2,
+            light: dataJson?.light,
+            noise: dataJson?.noise,
+          };
+        }));
       }
 
       setLastUpdate(new Date());
