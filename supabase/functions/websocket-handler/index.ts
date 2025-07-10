@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.3';
 
@@ -15,95 +16,120 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1yd2Fub3p1cGtqc2Rlc3FldnpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5ODY2NzcsImV4cCI6MjA2NzU2MjY3N30.8aromJx-G8NA5IZwmcVNyGFauowaLjQFCyXY9dXZ0iQ'
 );
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, upgrade, connection, sec-websocket-key, sec-websocket-version, sec-websocket-protocol, sec-websocket-extensions',
+};
+
 serve(async (req) => {
+  console.log('WebSocket handler received request:', req.method, req.url);
+  
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, upgrade, connection, sec-websocket-key, sec-websocket-version, sec-websocket-protocol",
-      },
+      headers: corsHeaders,
     });
   }
 
-  const { headers } = req;
-  const upgradeHeader = headers.get("upgrade") || "";
+  const upgradeHeader = req.headers.get("upgrade");
+  const connectionHeader = req.headers.get("connection");
+  
+  console.log('Headers:', {
+    upgrade: upgradeHeader,
+    connection: connectionHeader,
+    origin: req.headers.get("origin"),
+  });
 
-  if (upgradeHeader.toLowerCase() !== "websocket") {
+  if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {
+    console.log('Not a WebSocket upgrade request');
     return new Response("Expected WebSocket connection", { 
       status: 400,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-      }
+      headers: corsHeaders
     });
   }
 
   try {
+    console.log('Attempting WebSocket upgrade...');
+    
     const { socket, response } = Deno.upgradeWebSocket(req, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-      }
+      headers: corsHeaders
     });
     
     const clientId = crypto.randomUUID();
+    console.log(`WebSocket upgrade successful for client ${clientId}`);
     
     socket.onopen = () => {
-      console.log(`WebSocket client ${clientId} connected`);
+      console.log(`WebSocket client ${clientId} connected successfully`);
       clients.set(clientId, socket);
       
+      // Send connection confirmation
       socket.send(JSON.stringify({
         type: 'connection',
         data: {
           message: 'Connected to IoT WebSocket server',
           clientId: clientId,
-          status: 'online'
+          status: 'connected',
+          timestamp: new Date().toISOString()
         },
         timestamp: new Date().toISOString()
       }));
 
+      // Start sending mock data
       startMockDataGeneration(clientId);
     };
 
     socket.onmessage = async (event) => {
       try {
         const message = JSON.parse(event.data);
-        console.log('Received message:', message);
+        console.log(`Message from client ${clientId}:`, message);
 
         switch (message.type) {
           case 'auth':
-            console.log('Client authenticated:', clientId);
+            console.log(`Client ${clientId} authenticated`);
             socket.send(JSON.stringify({
               type: 'auth_success',
-              data: { clientId, status: 'authenticated' },
+              data: { 
+                clientId, 
+                status: 'authenticated',
+                message: 'Authentication successful'
+              },
               timestamp: new Date().toISOString()
             }));
             break;
             
           case 'device_command':
-            await handleDeviceCommand(message);
+            await handleDeviceCommand(message, clientId);
             break;
             
           case 'subscribe':
-            console.log('Client subscribed:', message.topic);
+            console.log(`Client ${clientId} subscribed to:`, message.topic);
+            break;
+            
+          case 'ping':
+            socket.send(JSON.stringify({
+              type: 'pong',
+              data: { timestamp: new Date().toISOString() },
+              timestamp: new Date().toISOString()
+            }));
             break;
             
           default:
-            console.log('Unknown message type:', message.type);
+            console.log(`Unknown message type from client ${clientId}:`, message.type);
         }
       } catch (error) {
-        console.error('Error processing message:', error);
+        console.error(`Error processing message from client ${clientId}:`, error);
         socket.send(JSON.stringify({
           type: 'error',
-          data: { message: 'Failed to process message' },
+          data: { message: 'Failed to process message', error: error.message },
           timestamp: new Date().toISOString()
         }));
       }
     };
 
-    socket.onclose = () => {
-      console.log(`WebSocket client ${clientId} disconnected`);
+    socket.onclose = (event) => {
+      console.log(`WebSocket client ${clientId} disconnected:`, event.code, event.reason);
       clients.delete(clientId);
     };
 
@@ -113,42 +139,49 @@ serve(async (req) => {
     };
 
     return response;
+    
   } catch (error) {
-    console.error('WebSocket upgrade error:', error);
-    return new Response("WebSocket upgrade failed", { 
+    console.error('WebSocket upgrade failed:', error);
+    return new Response(`WebSocket upgrade failed: ${error.message}`, { 
       status: 500,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-      }
+      headers: corsHeaders
     });
   }
 });
 
-async function handleDeviceCommand(message: any) {
-  console.log('Processing device command:', message);
+async function handleDeviceCommand(message: any, clientId: string) {
+  console.log(`Processing device command from client ${clientId}:`, message);
   
-  const response = {
-    type: 'device_update',
-    deviceId: message.deviceId,
-    data: {
-      command: message.command,
-      status: 'executed',
+  try {
+    const response = {
+      type: 'device_update',
+      deviceId: message.deviceId,
+      data: {
+        command: message.command,
+        status: 'executed',
+        executedAt: new Date().toISOString(),
+        clientId: clientId
+      },
       timestamp: new Date().toISOString()
-    },
-    timestamp: new Date().toISOString()
-  };
-  
-  broadcastToClients(response);
+    };
+    
+    broadcastToClients(response);
+  } catch (error) {
+    console.error('Error handling device command:', error);
+  }
 }
 
 function broadcastToClients(message: any) {
   const messageStr = JSON.stringify(message);
+  let activeClients = 0;
   
   clients.forEach((socket, clientId) => {
     try {
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(messageStr);
+        activeClients++;
       } else {
+        console.log(`Removing inactive client ${clientId}`);
         clients.delete(clientId);
       }
     } catch (error) {
@@ -156,34 +189,62 @@ function broadcastToClients(message: any) {
       clients.delete(clientId);
     }
   });
+  
+  console.log(`Broadcasted message to ${activeClients} active clients`);
 }
 
 function startMockDataGeneration(clientId: string) {
+  console.log(`Starting mock data generation for client ${clientId}`);
+  
+  // Send initial telemetry immediately
+  setTimeout(() => {
+    const socket = clients.get(clientId);
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const initialTelemetry = generateMockTelemetry();
+      socket.send(JSON.stringify(initialTelemetry));
+      console.log(`Sent initial telemetry to client ${clientId}`);
+    }
+  }, 1000);
+
+  // Regular telemetry updates
   const telemetryInterval = setInterval(() => {
     const socket = clients.get(clientId);
     if (!socket || socket.readyState !== WebSocket.OPEN) {
+      console.log(`Stopping telemetry for disconnected client ${clientId}`);
       clearInterval(telemetryInterval);
       return;
     }
 
-    const mockTelemetry = generateMockTelemetry();
-    socket.send(JSON.stringify(mockTelemetry));
-    saveTelemetryToDatabase(mockTelemetry);
-  }, 2000);
+    try {
+      const mockTelemetry = generateMockTelemetry();
+      socket.send(JSON.stringify(mockTelemetry));
+      saveTelemetryToDatabase(mockTelemetry);
+    } catch (error) {
+      console.error(`Error sending telemetry to client ${clientId}:`, error);
+      clearInterval(telemetryInterval);
+    }
+  }, 3000);
 
+  // Occasional alerts
   const alertInterval = setInterval(() => {
     const socket = clients.get(clientId);
     if (!socket || socket.readyState !== WebSocket.OPEN) {
+      console.log(`Stopping alerts for disconnected client ${clientId}`);
       clearInterval(alertInterval);
       return;
     }
 
-    if (Math.random() < 0.15) {
-      const alert = generateMockAlert();
-      socket.send(JSON.stringify(alert));
-      saveAlertToDatabase(alert);
+    if (Math.random() < 0.2) {
+      try {
+        const alert = generateMockAlert();
+        socket.send(JSON.stringify(alert));
+        saveAlertToDatabase(alert);
+        console.log(`Sent alert to client ${clientId}`);
+      } catch (error) {
+        console.error(`Error sending alert to client ${clientId}:`, error);
+      }
     }
-  }, 10000);
+  }, 8000);
 }
 
 function generateMockTelemetry() {

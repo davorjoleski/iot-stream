@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -19,13 +18,22 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const maxReconnectAttempts = 5;
+  const pingIntervalRef = useRef<number | null>(null);
+  const maxReconnectAttempts = 3;
   const { toast } = useToast();
 
   const connect = () => {
     try {
+      // Clean up existing connection
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
+      }
+
+      // Clear any existing reconnect timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
 
       const wsUrl = `wss://mrwanozupkjsdesqevzd.supabase.co/functions/v1/websocket-handler`;
@@ -39,12 +47,16 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
         onStatusChange?.(true);
         reconnectAttemptsRef.current = 0;
         
+        // Send authentication message
         if (wsRef.current) {
           wsRef.current.send(JSON.stringify({
             type: 'auth',
             timestamp: new Date().toISOString()
           }));
         }
+
+        // Start ping/pong to keep connection alive
+        startPingInterval();
       };
 
       wsRef.current.onmessage = (event) => {
@@ -53,8 +65,20 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
           console.log('WebSocket message received:', message);
           onMessage?.(message);
 
+          // Handle different message types
           switch (message.type) {
+            case 'connection':
+              console.log('Connection established:', message.data);
+              break;
+            case 'auth_success':
+              console.log('Authentication successful');
+              break;
+            case 'pong':
+              console.log('Pong received');
+              break;
             case 'device_update':
+            case 'telemetry':
+              // Let parent component handle these
               break;
             case 'alert':
               toast({
@@ -63,13 +87,8 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
                 variant: message.data.severity === 'critical' ? 'destructive' : 'default',
               });
               break;
-            case 'telemetry':
-              break;
-            case 'connection':
-              console.log('Connection established:', message.data);
-              break;
-            case 'auth_success':
-              console.log('Authentication successful');
+            case 'error':
+              console.error('WebSocket server error:', message.data);
               break;
           }
         } catch (error) {
@@ -81,20 +100,23 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
         console.log('WebSocket disconnected:', event.code, event.reason);
         setIsConnected(false);
         onStatusChange?.(false);
+        stopPingInterval();
         
+        // Only attempt to reconnect for unexpected closures
         if (event.code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 10000);
           reconnectAttemptsRef.current++;
           
+          console.log(`Attempting to reconnect in ${delay}ms... (attempt ${reconnectAttemptsRef.current})`);
+          
           reconnectTimeoutRef.current = window.setTimeout(() => {
-            console.log(`Attempting to reconnect... (attempt ${reconnectAttemptsRef.current})`);
             connect();
           }, delay);
         } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
           console.log('Max reconnection attempts reached');
           toast({
             title: "Connection Lost",
-            description: "WebSocket connection failed. Using fallback data mode.",
+            description: "WebSocket connection failed. Please refresh the page to reconnect.",
             variant: "destructive",
           });
         }
@@ -113,19 +135,45 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
     }
   };
 
+  const startPingInterval = () => {
+    stopPingInterval();
+    pingIntervalRef.current = window.setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'ping',
+          timestamp: new Date().toISOString()
+        }));
+      }
+    }, 30000); // Ping every 30 seconds
+  };
+
+  const stopPingInterval = () => {
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+  };
+
   const disconnect = () => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
+    
+    stopPingInterval();
+    
     if (wsRef.current) {
       wsRef.current.close(1000, 'Manual disconnect');
+      wsRef.current = null;
     }
+    
     setIsConnected(false);
     onStatusChange?.(false);
   };
 
   useEffect(() => {
     connect();
+    
     return () => {
       disconnect();
     };
