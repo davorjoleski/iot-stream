@@ -287,7 +287,7 @@ export const AdvancedAnalytics = () => {
               telemetry: telemetryData,
               devices: deviceData,
               alerts: alertData,
-              metrics: performanceMetrics
+              analytics: [performanceMetrics]
             }}
             timeRange={`Last ${timeRange}`}
             filename="analytics-report"
