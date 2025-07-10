@@ -1,6 +1,5 @@
 
 import { useEffect, useRef, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 interface WebSocketMessage {
@@ -25,7 +24,6 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
 
   const connect = () => {
     try {
-      // Clear any existing connection
       if (wsRef.current) {
         wsRef.current.close();
       }
@@ -41,7 +39,6 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
         onStatusChange?.(true);
         reconnectAttemptsRef.current = 0;
         
-        // Send authentication message
         if (wsRef.current) {
           wsRef.current.send(JSON.stringify({
             type: 'auth',
@@ -56,7 +53,6 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
           console.log('WebSocket message received:', message);
           onMessage?.(message);
 
-          // Handle different message types
           switch (message.type) {
             case 'device_update':
               break;
@@ -68,7 +64,6 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
               });
               break;
             case 'telemetry':
-              // Handle telemetry data silently
               break;
             case 'connection':
               console.log('Connection established:', message.data);
@@ -87,9 +82,8 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
         setIsConnected(false);
         onStatusChange?.(false);
         
-        // Only attempt to reconnect if it wasn't a manual close and we haven't exceeded max attempts
         if (event.code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000); // Exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
           reconnectAttemptsRef.current++;
           
           reconnectTimeoutRef.current = window.setTimeout(() => {
@@ -100,7 +94,7 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
           console.log('Max reconnection attempts reached');
           toast({
             title: "Connection Lost",
-            description: "Unable to maintain WebSocket connection. Please refresh the page.",
+            description: "WebSocket connection failed. Using fallback data mode.",
             variant: "destructive",
           });
         }
@@ -130,15 +124,8 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
     onStatusChange?.(false);
   };
 
-  const sendMessage = (message: any) => {
-    if (wsRef.current && isConnected) {
-      wsRef.current.send(JSON.stringify(message));
-    }
-  };
-
   useEffect(() => {
     connect();
-
     return () => {
       disconnect();
     };
@@ -147,7 +134,6 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
   return null;
 };
 
-// Hook for using WebSocket in components
 export const useWebSocket = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);

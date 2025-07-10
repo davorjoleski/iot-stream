@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.3';
 
@@ -9,32 +8,51 @@ interface DeviceMessage {
   timestamp: string;
 }
 
-// Store connected clients
 const clients = new Map<string, WebSocket>();
 
-// Initialize Supabase client
 const supabase = createClient(
   'https://mrwanozupkjsdesqevzd.supabase.co',
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1yd2Fub3p1cGtqc2Rlc3FldnpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5ODY2NzcsImV4cCI6MjA2NzU2MjY3N30.8aromJx-G8NA5IZwmcVNyGFauowaLjQFCyXY9dXZ0iQ'
 );
 
 serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, upgrade, connection, sec-websocket-key, sec-websocket-version, sec-websocket-protocol",
+      },
+    });
+  }
+
   const { headers } = req;
   const upgradeHeader = headers.get("upgrade") || "";
 
   if (upgradeHeader.toLowerCase() !== "websocket") {
-    return new Response("Expected WebSocket connection", { status: 400 });
+    return new Response("Expected WebSocket connection", { 
+      status: 400,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+      }
+    });
   }
 
   try {
-    const { socket, response } = Deno.upgradeWebSocket(req);
+    const { socket, response } = Deno.upgradeWebSocket(req, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+      }
+    });
+    
     const clientId = crypto.randomUUID();
     
     socket.onopen = () => {
       console.log(`WebSocket client ${clientId} connected`);
       clients.set(clientId, socket);
       
-      // Send welcome message
       socket.send(JSON.stringify({
         type: 'connection',
         data: {
@@ -45,7 +63,6 @@ serve(async (req) => {
         timestamp: new Date().toISOString()
       }));
 
-      // Start sending mock telemetry data immediately
       startMockDataGeneration(clientId);
     };
 
@@ -98,7 +115,12 @@ serve(async (req) => {
     return response;
   } catch (error) {
     console.error('WebSocket upgrade error:', error);
-    return new Response("WebSocket upgrade failed", { status: 500 });
+    return new Response("WebSocket upgrade failed", { 
+      status: 500,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+      }
+    });
   }
 });
 
@@ -137,7 +159,6 @@ function broadcastToClients(message: any) {
 }
 
 function startMockDataGeneration(clientId: string) {
-  // Generate telemetry data every 2 seconds
   const telemetryInterval = setInterval(() => {
     const socket = clients.get(clientId);
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -147,12 +168,9 @@ function startMockDataGeneration(clientId: string) {
 
     const mockTelemetry = generateMockTelemetry();
     socket.send(JSON.stringify(mockTelemetry));
-    
-    // Also save to database
     saveTelemetryToDatabase(mockTelemetry);
   }, 2000);
 
-  // Generate alerts occasionally
   const alertInterval = setInterval(() => {
     const socket = clients.get(clientId);
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -160,7 +178,7 @@ function startMockDataGeneration(clientId: string) {
       return;
     }
 
-    if (Math.random() < 0.15) { // 15% chance
+    if (Math.random() < 0.15) {
       const alert = generateMockAlert();
       socket.send(JSON.stringify(alert));
       saveAlertToDatabase(alert);
