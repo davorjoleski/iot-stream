@@ -1,5 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.3';
 
 interface DeviceMessage {
   type: 'device_update' | 'telemetry' | 'alert' | 'command' | 'auth';
@@ -10,6 +11,12 @@ interface DeviceMessage {
 
 // Store connected clients
 const clients = new Map<string, WebSocket>();
+
+// Initialize Supabase client
+const supabase = createClient(
+  'https://mrwanozupkjsdesqevzd.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1yd2Fub3p1cGtqc2Rlc3FldnpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5ODY2NzcsImV4cCI6MjA2NzU2MjY3N30.8aromJx-G8NA5IZwmcVNyGFauowaLjQFCyXY9dXZ0iQ'
+);
 
 serve(async (req) => {
   const { headers } = req;
@@ -32,10 +39,14 @@ serve(async (req) => {
         type: 'connection',
         data: {
           message: 'Connected to IoT WebSocket server',
-          clientId: clientId
+          clientId: clientId,
+          status: 'online'
         },
         timestamp: new Date().toISOString()
       }));
+
+      // Start sending mock telemetry data immediately
+      startMockDataGeneration(clientId);
     };
 
     socket.onmessage = async (event) => {
@@ -48,7 +59,7 @@ serve(async (req) => {
             console.log('Client authenticated:', clientId);
             socket.send(JSON.stringify({
               type: 'auth_success',
-              data: { clientId },
+              data: { clientId, status: 'authenticated' },
               timestamp: new Date().toISOString()
             }));
             break;
@@ -125,57 +136,136 @@ function broadcastToClients(message: any) {
   });
 }
 
-// Generate mock telemetry data
+function startMockDataGeneration(clientId: string) {
+  // Generate telemetry data every 2 seconds
+  const telemetryInterval = setInterval(() => {
+    const socket = clients.get(clientId);
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      clearInterval(telemetryInterval);
+      return;
+    }
+
+    const mockTelemetry = generateMockTelemetry();
+    socket.send(JSON.stringify(mockTelemetry));
+    
+    // Also save to database
+    saveTelemetryToDatabase(mockTelemetry);
+  }, 2000);
+
+  // Generate alerts occasionally
+  const alertInterval = setInterval(() => {
+    const socket = clients.get(clientId);
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      clearInterval(alertInterval);
+      return;
+    }
+
+    if (Math.random() < 0.15) { // 15% chance
+      const alert = generateMockAlert();
+      socket.send(JSON.stringify(alert));
+      saveAlertToDatabase(alert);
+    }
+  }, 10000);
+}
+
 function generateMockTelemetry() {
   const deviceIds = ['temp-sensor-01', 'humidity-sensor-02', 'power-meter-03', 'pressure-sensor-04'];
   const deviceId = deviceIds[Math.floor(Math.random() * deviceIds.length)];
   
+  const baseTime = new Date();
+  const temperature = Math.round((20 + Math.random() * 15) * 10) / 10;
+  const humidity = Math.round((35 + Math.random() * 30) * 10) / 10;
+  const pressure = Math.round((995 + Math.random() * 30) * 10) / 10;
+  const power = Math.round((80 + Math.random() * 150) * 10) / 10;
+  const voltage = Math.round((215 + Math.random() * 15) * 10) / 10;
+  const current = Math.round((1.5 + Math.random() * 8) * 10) / 10;
+
   return {
     type: 'telemetry',
     deviceId: deviceId,
     data: {
-      temperature: Math.round((18 + Math.random() * 15) * 10) / 10,
-      humidity: Math.round((30 + Math.random() * 40) * 10) / 10,
-      pressure: Math.round((990 + Math.random() * 40) * 10) / 10,
-      power: Math.round((50 + Math.random() * 200) * 10) / 10,
-      voltage: Math.round((220 + Math.random() * 20) * 10) / 10,
-      current: Math.round((1 + Math.random() * 10) * 10) / 10,
-      co2: Math.round((350 + Math.random() * 100)),
-      light: Math.round((200 + Math.random() * 800)),
-      noise: Math.round((30 + Math.random() * 50)),
+      temperature,
+      humidity,
+      pressure,
+      power,
+      voltage,
+      current,
+      co2: Math.round((380 + Math.random() * 80)),
+      light: Math.round((250 + Math.random() * 600)),
+      noise: Math.round((35 + Math.random() * 40)),
+      timestamp: baseTime.toISOString()
+    },
+    timestamp: baseTime.toISOString()
+  };
+}
+
+function generateMockAlert() {
+  const alertTypes = ['high_temperature', 'low_humidity', 'power_spike', 'device_offline', 'pressure_anomaly'];
+  const severities = ['low', 'medium', 'high', 'critical'];
+  const deviceIds = ['temp-sensor-01', 'humidity-sensor-02', 'power-meter-03', 'pressure-sensor-04'];
+  
+  const alertType = alertTypes[Math.floor(Math.random() * alertTypes.length)];
+  const severity = severities[Math.floor(Math.random() * severities.length)];
+  const deviceId = deviceIds[Math.floor(Math.random() * deviceIds.length)];
+  
+  return {
+    type: 'alert',
+    data: {
+      id: crypto.randomUUID(),
+      type: alertType,
+      severity: severity,
+      message: `Alert: ${alertType.replace('_', ' ')} detected on ${deviceId}`,
+      deviceId: deviceId,
       timestamp: new Date().toISOString()
     },
     timestamp: new Date().toISOString()
   };
 }
 
-// Send mock data every 2 seconds
-setInterval(() => {
-  if (clients.size > 0) {
-    const mockTelemetry = generateMockTelemetry();
-    broadcastToClients(mockTelemetry);
-  }
-}, 2000);
+async function saveTelemetryToDatabase(telemetryData: any) {
+  try {
+    const { error } = await supabase
+      .from('telemetry')
+      .insert([{
+        device_id: telemetryData.deviceId,
+        temperature: telemetryData.data.temperature,
+        humidity: telemetryData.data.humidity,
+        pressure: telemetryData.data.pressure,
+        power: telemetryData.data.power,
+        voltage: telemetryData.data.voltage,
+        current: telemetryData.data.current,
+        data: {
+          co2: telemetryData.data.co2,
+          light: telemetryData.data.light,
+          noise: telemetryData.data.noise
+        },
+        timestamp: telemetryData.timestamp
+      }]);
 
-// Generate alerts periodically
-setInterval(() => {
-  if (clients.size > 0 && Math.random() < 0.1) { // 10% chance every 30 seconds
-    const alertTypes = ['high_temperature', 'low_humidity', 'power_spike', 'device_offline'];
-    const severities = ['low', 'medium', 'high', 'critical'];
-    
-    const alert = {
-      type: 'alert',
-      data: {
-        id: crypto.randomUUID(),
-        type: alertTypes[Math.floor(Math.random() * alertTypes.length)],
-        severity: severities[Math.floor(Math.random() * severities.length)],
-        message: `Alert: ${alertTypes[Math.floor(Math.random() * alertTypes.length)].replace('_', ' ')} detected`,
-        deviceId: 'sensor-' + Math.floor(Math.random() * 5),
-        timestamp: new Date().toISOString()
-      },
-      timestamp: new Date().toISOString()
-    };
-    
-    broadcastToClients(alert);
+    if (error) {
+      console.error('Error saving telemetry:', error);
+    }
+  } catch (error) {
+    console.error('Error saving telemetry to database:', error);
   }
-}, 30000);
+}
+
+async function saveAlertToDatabase(alertData: any) {
+  try {
+    const { error } = await supabase
+      .from('alerts')
+      .insert([{
+        type: alertData.data.type,
+        message: alertData.data.message,
+        severity: alertData.data.severity,
+        device_id: alertData.data.deviceId,
+        status: 'active'
+      }]);
+
+    if (error) {
+      console.error('Error saving alert:', error);
+    }
+  } catch (error) {
+    console.error('Error saving alert to database:', error);
+  }
+}

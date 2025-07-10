@@ -1,12 +1,16 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { Resend } from "npm:resend@2.0.0";
+
+const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
-interface AlertNotificationRequest {
+interface AlertEmailRequest {
   email: string;
   alert: {
     id: string;
@@ -17,115 +21,198 @@ interface AlertNotificationRequest {
   };
 }
 
-serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
+interface WelcomeEmailRequest {
+  email: string;
+  name?: string;
+  type: 'welcome' | 'reset_password' | 'confirm_email';
+}
+
+const handler = async (req: Request): Promise<Response> => {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { email, alert }: AlertNotificationRequest = await req.json();
-
-    // For demo purposes, we'll just log the notification
-    // In production, you would integrate with a service like Resend, SendGrid, etc.
-    console.log('Sending alert notification:', {
-      to: email,
-      alert: alert,
-      timestamp: new Date().toISOString()
-    });
-
-    // Simulate email sending
-    const emailContent = {
-      to: email,
-      subject: `IoT Alert: ${alert.type.replace('_', ' ').toUpperCase()}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-            <h1 style="margin: 0; font-size: 24px;">IoT Control Hub Alert</h1>
-          </div>
-          
-          <div style="background: white; padding: 20px; border: 1px solid #e1e5e9; border-radius: 0 0 8px 8px;">
-            <div style="background: ${alert.severity === 'critical' ? '#fee2e2' : alert.severity === 'high' ? '#fef3c7' : '#e0f2fe'}; 
-                        color: ${alert.severity === 'critical' ? '#dc2626' : alert.severity === 'high' ? '#d97706' : '#0369a1'}; 
-                        padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-              <h2 style="margin: 0 0 8px 0; font-size: 18px;">
-                ${alert.severity.toUpperCase()} ALERT
-              </h2>
-              <p style="margin: 0; font-size: 16px;">${alert.message}</p>
-            </div>
-            
-            <div style="background: #f8fafc; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
-              <h3 style="margin: 0 0 12px 0; color: #374151;">Alert Details</h3>
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-weight: 500;">Alert ID:</td>
-                  <td style="padding: 8px 0; color: #374151;">${alert.id}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-weight: 500;">Type:</td>
-                  <td style="padding: 8px 0; color: #374151;">${alert.type.replace('_', ' ')}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-weight: 500;">Severity:</td>
-                  <td style="padding: 8px 0; color: #374151;">${alert.severity}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; font-weight: 500;">Timestamp:</td>
-                  <td style="padding: 8px 0; color: #374151;">${new Date(alert.timestamp).toLocaleString()}</td>
-                </tr>
-              </table>
-            </div>
-            
-            <div style="text-align: center; margin-top: 24px;">
-              <a href="https://mrwanozupkjsdesqevzd.supabase.co" 
-                 style="background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; 
-                        border-radius: 6px; font-weight: 500; display: inline-block;">
-                View Dashboard
-              </a>
-            </div>
-            
-            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e7eb; 
-                        text-align: center; color: #6b7280; font-size: 14px;">
-              <p>This is an automated alert from your IoT Control Hub system.</p>
-              <p>If you believe this is an error, please check your automation rules.</p>
-            </div>
-          </div>
-        </div>
-      `
-    };
-
-    // Log successful email simulation
-    console.log('Email notification would be sent:', emailContent);
-
+    const body = await req.json();
+    
+    if (body.type === 'welcome' || body.type === 'confirm_email' || body.type === 'reset_password') {
+      return await handleAuthEmail(body as WelcomeEmailRequest);
+    } else {
+      return await handleAlertEmail(body as AlertEmailRequest);
+    }
+  } catch (error: any) {
+    console.error("Error in send-alert-notification function:", error);
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Alert notification sent successfully',
-        emailPreview: emailContent
-      }),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          ...corsHeaders,
-        },
-      }
-    );
-
-  } catch (error) {
-    console.error('Error sending alert notification:', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message 
-      }),
+      JSON.stringify({ error: error.message }),
       {
         status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          ...corsHeaders,
-        },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       }
     );
   }
-});
+};
+
+async function handleAlertEmail({ email, alert }: AlertEmailRequest): Promise<Response> {
+  const severityColor = {
+    low: '#10b981',
+    medium: '#f59e0b',
+    high: '#ef4444',
+    critical: '#dc2626'
+  };
+
+  const emailResponse = await resend.emails.send({
+    from: "IoT Control Hub <alerts@iot-control.com>",
+    to: [email],
+    subject: `${alert.severity.toUpperCase()} Alert: ${alert.type.replace('_', ' ')}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>IoT Alert Notification</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f8fafc; }
+            .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            .header { background: linear-gradient(135deg, #3b82f6, #06b6d4); color: white; padding: 30px; text-align: center; }
+            .content { padding: 30px; }
+            .alert-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; color: white; background-color: ${severityColor[alert.severity as keyof typeof severityColor] || '#6b7280'}; }
+            .footer { background: #f1f5f9; padding: 20px; text-align: center; font-size: 12px; color: #64748b; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🚨 IoT Alert Notification</h1>
+              <p>Your IoT system requires attention</p>
+            </div>
+            <div class="content">
+              <div class="alert-badge">${alert.severity.toUpperCase()}</div>
+              <h2>${alert.type.replace('_', ' ').toUpperCase()}</h2>
+              <p><strong>Message:</strong> ${alert.message}</p>
+              <p><strong>Time:</strong> ${new Date(alert.timestamp).toLocaleString()}</p>
+              <p><strong>Alert ID:</strong> ${alert.id}</p>
+              <hr style="margin: 20px 0; border: none; border-top: 1px solid #e2e8f0;">
+              <p>Please check your IoT Control Hub dashboard for more details and to acknowledge this alert.</p>
+              <a href="https://your-iot-dashboard.com" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 10px;">Open Dashboard</a>
+            </div>
+            <div class="footer">
+              <p>IoT Control Hub - Monitoring your devices 24/7</p>
+              <p>This is an automated message. Please do not reply to this email.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `,
+  });
+
+  return new Response(JSON.stringify(emailResponse), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+    },
+  });
+}
+
+async function handleAuthEmail({ email, name, type }: WelcomeEmailRequest): Promise<Response> {
+  let subject = "";
+  let title = "";
+  let content = "";
+
+  switch (type) {
+    case 'welcome':
+      subject = "Welcome to IoT Control Hub!";
+      title = "🎉 Welcome to IoT Control Hub";
+      content = `
+        <p>Hello ${name || 'there'}!</p>
+        <p>Thank you for joining IoT Control Hub - your comprehensive solution for monitoring and managing IoT devices.</p>
+        <h3>What you can do:</h3>
+        <ul>
+          <li>📊 Monitor real-time telemetry data from your devices</li>
+          <li>🚨 Receive instant alerts when issues arise</li>
+          <li>🔧 Control and configure your IoT devices remotely</li>
+          <li>📈 Analyze historical data and trends</li>
+          <li>⚡ Set up automated workflows and rules</li>
+        </ul>
+        <p>Get started by logging into your dashboard and adding your first device!</p>
+      `;
+      break;
+    case 'confirm_email':
+      subject = "Confirm Your Email - IoT Control Hub";
+      title = "📧 Confirm Your Email Address";
+      content = `
+        <p>Hello!</p>
+        <p>Please confirm your email address to complete your registration with IoT Control Hub.</p>
+        <p>Once confirmed, you'll have full access to all features including:</p>
+        <ul>
+          <li>Device monitoring and control</li>
+          <li>Real-time alerts and notifications</li>
+          <li>Advanced analytics and reporting</li>
+          <li>Automation workflows</li>
+        </ul>
+      `;
+      break;
+    case 'reset_password':
+      subject = "Reset Your Password - IoT Control Hub";
+      title = "🔒 Password Reset Request";
+      content = `
+        <p>Hello!</p>
+        <p>We received a request to reset your password for your IoT Control Hub account.</p>
+        <p>If you didn't request this, please ignore this email. Your password will remain unchanged.</p>
+        <p>For security reasons, this link will expire in 24 hours.</p>
+      `;
+      break;
+  }
+
+  const emailResponse = await resend.emails.send({
+    from: "IoT Control Hub <no-reply@iot-control.com>",
+    to: [email],
+    subject,
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${subject}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f8fafc; }
+            .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            .header { background: linear-gradient(135deg, #3b82f6, #06b6d4); color: white; padding: 30px; text-align: center; }
+            .content { padding: 30px; line-height: 1.6; }
+            .footer { background: #f1f5f9; padding: 20px; text-align: center; font-size: 12px; color: #64748b; }
+            .btn { display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+            ul { padding-left: 20px; }
+            li { margin-bottom: 8px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>${title}</h1>
+              <p>Your Smart IoT Management Platform</p>
+            </div>
+            <div class="content">
+              ${content}
+              <a href="https://your-iot-dashboard.com" class="btn">Access Your Dashboard</a>
+            </div>
+            <div class="footer">
+              <p><strong>IoT Control Hub</strong> - Empowering your IoT ecosystem</p>
+              <p>📧 support@iot-control.com | 🌐 www.iot-control.com</p>
+              <p>This email was sent to ${email}. If you have any questions, please contact our support team.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `,
+  });
+
+  return new Response(JSON.stringify(emailResponse), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+    },
+  });
+}
+
+serve(handler);

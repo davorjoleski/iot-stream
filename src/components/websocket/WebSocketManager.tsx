@@ -19,11 +19,17 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 5;
   const { toast } = useToast();
 
   const connect = () => {
     try {
-      // Use the correct WebSocket URL format for Supabase edge functions
+      // Clear any existing connection
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+
       const wsUrl = `wss://mrwanozupkjsdesqevzd.supabase.co/functions/v1/websocket-handler`;
       console.log('Attempting WebSocket connection to:', wsUrl);
       
@@ -33,6 +39,7 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
         console.log('WebSocket connected successfully');
         setIsConnected(true);
         onStatusChange?.(true);
+        reconnectAttemptsRef.current = 0;
         
         // Send authentication message
         if (wsRef.current) {
@@ -61,9 +68,13 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
               });
               break;
             case 'telemetry':
+              // Handle telemetry data silently
               break;
             case 'connection':
               console.log('Connection established:', message.data);
+              break;
+            case 'auth_success':
+              console.log('Authentication successful');
               break;
           }
         } catch (error) {
@@ -76,12 +87,22 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
         setIsConnected(false);
         onStatusChange?.(false);
         
-        // Only attempt to reconnect if it wasn't a manual close
-        if (event.code !== 1000) {
+        // Only attempt to reconnect if it wasn't a manual close and we haven't exceeded max attempts
+        if (event.code !== 1000 && reconnectAttemptsRef.current < maxReconnectAttempts) {
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000); // Exponential backoff
+          reconnectAttemptsRef.current++;
+          
           reconnectTimeoutRef.current = window.setTimeout(() => {
-            console.log('Attempting to reconnect...');
+            console.log(`Attempting to reconnect... (attempt ${reconnectAttemptsRef.current})`);
             connect();
-          }, 3000);
+          }, delay);
+        } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+          console.log('Max reconnection attempts reached');
+          toast({
+            title: "Connection Lost",
+            description: "Unable to maintain WebSocket connection. Please refresh the page.",
+            variant: "destructive",
+          });
         }
       };
 
@@ -93,6 +114,8 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
 
     } catch (error) {
       console.error('Error creating WebSocket connection:', error);
+      setIsConnected(false);
+      onStatusChange?.(false);
     }
   };
 
@@ -103,6 +126,8 @@ export const WebSocketManager = ({ onMessage, onStatusChange }: WebSocketManager
     if (wsRef.current) {
       wsRef.current.close(1000, 'Manual disconnect');
     }
+    setIsConnected(false);
+    onStatusChange?.(false);
   };
 
   const sendMessage = (message: any) => {
