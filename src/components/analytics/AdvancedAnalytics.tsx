@@ -283,11 +283,11 @@ export const AdvancedAnalytics = () => {
           </Button>
 
           <ExportButton 
-            data={{ 
+            data={{
               telemetry: telemetryData,
               devices: deviceData,
               alerts: alertData,
-              analytics: performanceMetrics
+              metrics: performanceMetrics
             }}
             timeRange={`Last ${timeRange}`}
             filename="analytics-report"
