@@ -39,17 +39,17 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
             console.log('New telemetry data:', payload);
             const message: RealtimeMessage = {
               type: 'telemetry',
-              deviceId: payload.new.device_id,
+              deviceId: payload.new?.device_id,
               data: {
-                temperature: payload.new.temperature,
-                humidity: payload.new.humidity,
-                pressure: payload.new.pressure,
-                power: payload.new.power,
-                voltage: payload.new.voltage,
-                current: payload.new.current,
-                ...payload.new.data
+                temperature: payload.new?.temperature,
+                humidity: payload.new?.humidity,
+                pressure: payload.new?.pressure,
+                power: payload.new?.power,
+                voltage: payload.new?.voltage,
+                current: payload.new?.current,
+                ...payload.new?.data
               },
-              timestamp: payload.new.timestamp
+              timestamp: payload.new?.timestamp
             };
             onMessage?.(message);
           }
@@ -71,23 +71,23 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
             console.log('New alert:', payload);
             const message: RealtimeMessage = {
               type: 'alert',
-              deviceId: payload.new.device_id,
+              deviceId: payload.new?.device_id,
               data: {
-                id: payload.new.id,
-                type: payload.new.type,
-                severity: payload.new.severity,
-                message: payload.new.message,
-                status: payload.new.status
+                id: payload.new?.id,
+                type: payload.new?.type,
+                severity: payload.new?.severity,
+                message: payload.new?.message,
+                status: payload.new?.status
               },
-              timestamp: payload.new.created_at
+              timestamp: payload.new?.created_at
             };
             onMessage?.(message);
             
             // Show toast notification
             toast({
               title: "New Alert",
-              description: payload.new.message,
-              variant: payload.new.severity === 'critical' ? 'destructive' : 'default',
+              description: payload.new?.message,
+              variant: payload.new?.severity === 'critical' ? 'destructive' : 'default',
             });
           }
         )
@@ -145,7 +145,10 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
           }
         };
 
-        await supabase.from('telemetry').insert([mockTelemetry]);
+        const { error } = await supabase.from('telemetry').insert([mockTelemetry]);
+        if (error) {
+          console.error('Error inserting mock telemetry:', error);
+        }
       } catch (error) {
         console.error('Error generating mock telemetry:', error);
       }
@@ -163,13 +166,17 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
           const severity = severities[Math.floor(Math.random() * severities.length)];
           const deviceId = deviceIds[Math.floor(Math.random() * deviceIds.length)];
           
-          await supabase.from('alerts').insert([{
+          const { error } = await supabase.from('alerts').insert([{
             type: alertType,
             message: `Alert: ${alertType.replace('_', ' ')} detected on ${deviceId}`,
             severity: severity,
             device_id: deviceId,
             status: 'active'
           }]);
+          
+          if (error) {
+            console.error('Error inserting mock alert:', error);
+          }
         } catch (error) {
           console.error('Error generating mock alert:', error);
         }
