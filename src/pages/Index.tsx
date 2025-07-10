@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { WebSocketManager } from "@/components/websocket/WebSocketManager";
+import { RealtimeManager } from "@/components/realtime/RealtimeManager";
 import { AutomationEngine } from "@/components/automation/AutomationEngine";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { AppTabs } from "@/components/layout/AppTabs";
@@ -14,7 +14,7 @@ const Index = () => {
   const { user, loading, signOut } = useAuth();
   const { toast } = useToast();
   const { devices, alerts, selectedDevice, setSelectedDevice, fetchData } = useAppData(user);
-  const [wsConnected, setWsConnected] = useState(false);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
@@ -24,8 +24,8 @@ const Index = () => {
     });
   };
 
-  const handleWebSocketMessage = (message: any) => {
-    console.log('WebSocket message:', message);
+  const handleRealtimeMessage = (message: any) => {
+    console.log('Realtime message:', message);
     if (message.type === 'device_update' || message.type === 'telemetry') {
       fetchData();
     }
@@ -41,19 +41,19 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-blue-950">
-      <WebSocketManager 
-        onMessage={handleWebSocketMessage}
-        onStatusChange={setWsConnected}
+      <RealtimeManager 
+        onMessage={handleRealtimeMessage}
+        onStatusChange={setRealtimeConnected}
       />
       <AutomationEngine />
       
       <AppHeader 
         user={user}
-        wsConnected={wsConnected}
+        wsConnected={realtimeConnected}
         onSignOut={handleSignOut}
       />
 
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-4 py-6 max-w-7xl">
         <AppTabs
           devices={devices}
           alerts={alerts}

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Brush } from 'recharts';
 import { RefreshCw, Zap, ZoomIn } from "lucide-react";
 import { ExportButton } from "@/components/export/ExportButton";
-import { useWebSocket } from "@/components/websocket/WebSocketManager";
+import { useRealtime } from "@/components/realtime/RealtimeManager";
 import { supabase } from "@/integrations/supabase/client";
 
 interface TelemetryData {
@@ -29,7 +29,7 @@ export const TelemetryChart = () => {
   const [selectedMetrics, setSelectedMetrics] = useState(['temperature', 'humidity', 'power']);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const { isConnected, lastMessage } = useWebSocket();
+  const { isConnected, lastMessage } = useRealtime();
 
   // Available metrics configuration
   const metricsConfig = {
@@ -46,12 +46,12 @@ export const TelemetryChart = () => {
 
   useEffect(() => {
     fetchTelemetryData();
-    const interval = setInterval(fetchTelemetryData, 2000); // Update every 2 seconds
+    const interval = setInterval(fetchTelemetryData, 5000);
     
     return () => clearInterval(interval);
   }, [timeRange]);
 
-  // Handle real-time WebSocket data
+  // Handle real-time data
   useEffect(() => {
     if (lastMessage && lastMessage.type === 'telemetry') {
       const newData = {
@@ -81,12 +81,12 @@ export const TelemetryChart = () => {
 
   const getMaxDataPoints = () => {
     switch (timeRange) {
-      case '15m': return 450; // 15min * 30 points/min
-      case '30m': return 900; // 30min * 30 points/min
-      case '1h': return 1800; // 1h * 30 points/min
-      case '6h': return 1080; // 6h * 3 points/min
-      case '24h': return 1440; // 24h * 1 point/min
-      case '7d': return 2016; // 7d * 12 points/hour
+      case '15m': return 450;
+      case '30m': return 900;
+      case '1h': return 1800;
+      case '6h': return 1080;
+      case '24h': return 1440;
+      case '7d': return 2016;
       default: return 1800;
     }
   };
@@ -108,12 +108,8 @@ export const TelemetryChart = () => {
 
       if (error) throw error;
 
-      // Generate some mock data if no real data exists
-      if (!data || data.length === 0) {
-        const mockData = generateMockTelemetryData(hoursBack);
-        setTelemetryData(mockData);
-      } else {
-        setTelemetryData(data.map(item => {
+      if (data && data.length > 0) {
+        const formattedData = data.map(item => {
           const dataJson = item.data as any;
           return {
             timestamp: item.timestamp,
@@ -127,12 +123,20 @@ export const TelemetryChart = () => {
             light: dataJson?.light,
             noise: dataJson?.noise,
           };
-        }));
+        });
+        setTelemetryData(formattedData);
+      } else {
+        // Generate some sample data if no real data exists
+        const mockData = generateMockTelemetryData(hoursBack);
+        setTelemetryData(mockData);
       }
 
       setLastUpdate(new Date());
     } catch (error) {
       console.error('Error fetching telemetry data:', error);
+      // Fallback to mock data
+      const mockData = generateMockTelemetryData(getTimeRangeHours());
+      setTelemetryData(mockData);
     } finally {
       setIsLoading(false);
     }
@@ -140,7 +144,7 @@ export const TelemetryChart = () => {
 
   const generateMockTelemetryData = (hours: number): TelemetryData[] => {
     const data: TelemetryData[] = [];
-    const points = Math.min(getMaxDataPoints(), hours * 60); // One point per minute for recent data
+    const points = Math.min(getMaxDataPoints(), hours * 60);
     const interval = (hours * 60 * 60 * 1000) / points;
 
     for (let i = 0; i < points; i++) {
@@ -198,19 +202,19 @@ export const TelemetryChart = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold">Real-time Telemetry</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-xl md:text-2xl font-bold">Real-time Telemetry</h2>
+          <p className="text-sm text-muted-foreground">
             Live sensor data with {isConnected ? 'real-time' : 'periodic'} updates
           </p>
         </div>
         
-        <div className="flex items-center gap-2">
-          <Badge variant={isConnected ? "default" : "secondary"}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant={isConnected ? "default" : "secondary"} className="text-xs">
             <Zap className="w-3 h-3 mr-1" />
-            {isConnected ? "Live" : "Offline"}
+            {isConnected ? "Live Data" : "Offline"}
           </Badge>
           <ExportButton 
             data={{ telemetry: telemetryData }}
@@ -221,18 +225,18 @@ export const TelemetryChart = () => {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <CardTitle>Sensor Readings</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-lg">Sensor Readings</CardTitle>
+              <CardDescription className="text-sm">
                 Last updated: {lastUpdate.toLocaleTimeString()}
               </CardDescription>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Select value={timeRange} onValueChange={setTimeRange}>
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-28 md:w-32">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -257,14 +261,14 @@ export const TelemetryChart = () => {
           </div>
         </CardHeader>
         
-        <CardContent>
+        <CardContent className="pt-0">
           <div className="mb-4">
             <div className="flex flex-wrap gap-2">
               {Object.entries(metricsConfig).map(([key, config]) => (
                 <Badge
                   key={key}
                   variant={selectedMetrics.includes(key) ? "default" : "outline"}
-                  className="cursor-pointer"
+                  className="cursor-pointer text-xs"
                   onClick={() => {
                     setSelectedMetrics(prev => 
                       prev.includes(key) 
@@ -280,7 +284,7 @@ export const TelemetryChart = () => {
             </div>
           </div>
 
-          <div className="h-96">
+          <div className="h-64 md:h-96">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={telemetryData}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -288,8 +292,9 @@ export const TelemetryChart = () => {
                   dataKey="timestamp"
                   tickFormatter={formatTimestamp}
                   interval="preserveStartEnd"
+                  tick={{ fontSize: 12 }}
                 />
-                <YAxis />
+                <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip 
                   labelFormatter={(label) => `Time: ${formatTimestamp(label)}`}
                   formatter={formatTooltipValue}
@@ -312,7 +317,6 @@ export const TelemetryChart = () => {
                   );
                 })}
                 
-                {/* Add brush for zooming */}
                 <Brush
                   dataKey="timestamp"
                   height={30}
@@ -322,11 +326,12 @@ export const TelemetryChart = () => {
             </ResponsiveContainer>
           </div>
           
-          <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+          <div className="mt-4 flex items-center justify-between text-xs md:text-sm text-muted-foreground">
             <span>Data points: {telemetryData.length}</span>
             <div className="flex items-center gap-2">
               <ZoomIn className="w-4 h-4" />
-              <span>Drag on bottom chart to zoom</span>
+              <span className="hidden sm:inline">Drag on bottom chart to zoom</span>
+              <span className="sm:hidden">Drag to zoom</span>
             </div>
           </div>
         </CardContent>

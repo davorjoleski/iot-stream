@@ -1,8 +1,9 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Activity, Wifi, WifiOff, LogOut } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { LogOut, Zap, User, Mail } from "lucide-react";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 interface AppHeaderProps {
   user: any;
@@ -12,30 +13,55 @@ interface AppHeaderProps {
 
 export const AppHeader = ({ user, wsConnected, onSignOut }: AppHeaderProps) => {
   return (
-    <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b sticky top-0 z-50">
-      <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center">
-            <Activity className="w-5 h-5 text-white" />
+    <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
+      <div className="container mx-auto px-4 py-3 max-w-7xl">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                <Zap className="w-4 h-4 text-white" />
+              </div>
+              <h1 className="text-lg md:text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                IoT Stream
+              </h1>
+            </div>
+            
+            <Badge 
+              variant={wsConnected ? "default" : "secondary"} 
+              className="text-xs hidden sm:flex"
+            >
+              <Zap className="w-3 h-3 mr-1" />
+              {wsConnected ? "Live Data" : "Offline"}
+            </Badge>
           </div>
-          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
-            IoT Control Hub
-          </h1>
-        </div>
-        
-        <div className="flex items-center space-x-4">
-          <Badge variant={wsConnected ? "default" : "destructive"} className="hidden sm:flex">
-            {wsConnected ? <Wifi className="w-3 h-3 mr-1" /> : <WifiOff className="w-3 h-3 mr-1" />}
-            {wsConnected ? "Live Data" : "Offline"}
-          </Badge>
-          
-          <span className="text-sm text-muted-foreground hidden md:block">
-            Welcome, {user.email}
-          </span>
-          <Button onClick={onSignOut} variant="outline" size="sm">
-            <LogOut className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">Sign Out</span>
-          </Button>
+
+          <div className="flex items-center gap-2 md:gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Avatar className="w-6 h-6 md:w-8 md:h-8">
+                <AvatarFallback className="text-xs">
+                  <User className="w-3 h-3 md:w-4 md:h-4" />
+                </AvatarFallback>
+              </Avatar>
+              <div className="hidden sm:flex items-center gap-1">
+                <Mail className="w-3 h-3" />
+                <span className="text-xs md:text-sm truncate max-w-32 md:max-w-none">
+                  {user?.email}
+                </span>
+              </div>
+            </div>
+            
+            <ThemeToggle />
+            
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={onSignOut}
+              className="flex items-center gap-1 md:gap-2"
+            >
+              <LogOut className="w-3 h-3 md:w-4 md:h-4" />
+              <span className="hidden sm:inline text-xs md:text-sm">Sign Out</span>
+            </Button>
+          </div>
         </div>
       </div>
     </header>
