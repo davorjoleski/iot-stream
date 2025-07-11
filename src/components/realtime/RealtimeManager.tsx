@@ -132,11 +132,36 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
     }
   };
 
-  const startMockDataGeneration = () => {
+  const startMockDataGeneration = async () => {
+    // First, ensure we have some devices to work with
+    const { data: existingDevices } = await supabase.from('devices').select('id').limit(4);
+    
+    let deviceIds: string[] = [];
+    
+    if (!existingDevices || existingDevices.length === 0) {
+      // Create mock devices if none exist
+      const mockDevices = [
+        { name: 'Temperature Sensor 01', type: 'temperature', location: 'Server Room', status: 'online' },
+        { name: 'Humidity Sensor 02', type: 'humidity', location: 'Warehouse', status: 'online' },
+        { name: 'Power Meter 03', type: 'power', location: 'Main Panel', status: 'online' },
+        { name: 'Pressure Sensor 04', type: 'pressure', location: 'Pipeline A', status: 'online' }
+      ];
+      
+      const { data: newDevices, error: deviceError } = await supabase.from('devices').insert(mockDevices).select('id');
+      if (deviceError) {
+        console.error('Error creating mock devices:', deviceError);
+        return;
+      }
+      deviceIds = newDevices?.map(d => d.id) || [];
+    } else {
+      deviceIds = existingDevices.map(d => d.id);
+    }
+
     // Generate mock telemetry data every 3 seconds
     const interval = setInterval(async () => {
       try {
-        const deviceIds = ['temp-sensor-01', 'humidity-sensor-02', 'power-meter-03', 'pressure-sensor-04'];
+        if (deviceIds.length === 0) return;
+        
         const deviceId = deviceIds[Math.floor(Math.random() * deviceIds.length)];
         
         const mockTelemetry = {
@@ -165,11 +190,10 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
 
     // Generate occasional alerts
     const alertInterval = setInterval(async () => {
-      if (Math.random() < 0.3) {
+      if (Math.random() < 0.3 && deviceIds.length > 0) {
         try {
           const alertTypes = ['high_temperature', 'low_humidity', 'power_spike', 'device_offline'];
           const severities = ['low', 'medium', 'high', 'critical'];
-          const deviceIds = ['temp-sensor-01', 'humidity-sensor-02', 'power-meter-03', 'pressure-sensor-04'];
           
           const alertType = alertTypes[Math.floor(Math.random() * alertTypes.length)];
           const severity = severities[Math.floor(Math.random() * severities.length)];
@@ -177,7 +201,7 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
           
           const { error } = await supabase.from('alerts').insert([{
             type: alertType,
-            message: `Alert: ${alertType.replace('_', ' ')} detected on ${deviceId}`,
+            message: `Alert: ${alertType.replace('_', ' ')} detected`,
             severity: severity,
             device_id: deviceId,
             status: 'active'
