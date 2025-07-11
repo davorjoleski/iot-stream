@@ -37,21 +37,23 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
           { event: 'INSERT', schema: 'public', table: 'telemetry' },
           (payload) => {
             console.log('New telemetry data:', payload);
-            const message: RealtimeMessage = {
-              type: 'telemetry',
-              deviceId: payload.new?.device_id,
-              data: {
-                temperature: payload.new?.temperature,
-                humidity: payload.new?.humidity,
-                pressure: payload.new?.pressure,
-                power: payload.new?.power,
-                voltage: payload.new?.voltage,
-                current: payload.new?.current,
-                ...payload.new?.data
-              },
-              timestamp: payload.new?.timestamp
-            };
-            onMessage?.(message);
+            if (payload.new) {
+              const message: RealtimeMessage = {
+                type: 'telemetry',
+                deviceId: payload.new.device_id,
+                data: {
+                  temperature: payload.new.temperature,
+                  humidity: payload.new.humidity,
+                  pressure: payload.new.pressure,
+                  power: payload.new.power,
+                  voltage: payload.new.voltage,
+                  current: payload.new.current,
+                  ...payload.new.data
+                },
+                timestamp: payload.new.timestamp
+              };
+              onMessage?.(message);
+            }
           }
         )
         .subscribe((status) => {
@@ -69,26 +71,28 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
           { event: 'INSERT', schema: 'public', table: 'alerts' },
           (payload) => {
             console.log('New alert:', payload);
-            const message: RealtimeMessage = {
-              type: 'alert',
-              deviceId: payload.new?.device_id,
-              data: {
-                id: payload.new?.id,
-                type: payload.new?.type,
-                severity: payload.new?.severity,
-                message: payload.new?.message,
-                status: payload.new?.status
-              },
-              timestamp: payload.new?.created_at
-            };
-            onMessage?.(message);
-            
-            // Show toast notification
-            toast({
-              title: "New Alert",
-              description: payload.new?.message,
-              variant: payload.new?.severity === 'critical' ? 'destructive' : 'default',
-            });
+            if (payload.new) {
+              const message: RealtimeMessage = {
+                type: 'alert',
+                deviceId: payload.new.device_id,
+                data: {
+                  id: payload.new.id,
+                  type: payload.new.type,
+                  severity: payload.new.severity,
+                  message: payload.new.message,
+                  status: payload.new.status
+                },
+                timestamp: payload.new.created_at
+              };
+              onMessage?.(message);
+              
+              // Show toast notification
+              toast({
+                title: "New Alert",
+                description: payload.new.message,
+                variant: payload.new.severity === 'critical' ? 'destructive' : 'default',
+              });
+            }
           }
         )
         .subscribe();
@@ -100,16 +104,18 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
           { event: '*', schema: 'public', table: 'devices' },
           (payload) => {
             console.log('Device change:', payload);
-            const deviceId = payload.new?.id || payload.old?.id;
-            const deviceData = payload.new || payload.old;
+            const deviceRecord = payload.new || payload.old;
+            const deviceId = deviceRecord && typeof deviceRecord === 'object' && 'id' in deviceRecord ? deviceRecord.id : undefined;
             
-            const message: RealtimeMessage = {
-              type: 'device_update',
-              deviceId: deviceId,
-              data: deviceData,
-              timestamp: new Date().toISOString()
-            };
-            onMessage?.(message);
+            if (deviceRecord && deviceId) {
+              const message: RealtimeMessage = {
+                type: 'device_update',
+                deviceId: deviceId,
+                data: deviceRecord,
+                timestamp: new Date().toISOString()
+              };
+              onMessage?.(message);
+            }
           }
         )
         .subscribe();
