@@ -25,6 +25,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuditLog } from "@/hooks/useAuditLog";
+import { AutomationHub } from "@/components/automation/AutomationHub";
+import { AutomationEngine } from "@/components/automation/AutomationEngine";
 
 interface Device {
   id: string;
@@ -192,6 +194,9 @@ export const ControlPanel = ({ devices, onDevicesChange }: ControlPanelProps) =>
 
   return (
     <div className="space-y-6">
+      {/* Background automation engine */}
+      <AutomationEngine />
+      
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold">Device Control Panel</h2>
@@ -385,27 +390,7 @@ export const ControlPanel = ({ devices, onDevicesChange }: ControlPanelProps) =>
         </TabsContent>
 
         <TabsContent value="automation" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Automation Rules</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Create automated workflows for your devices
-              </p>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <Settings className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Automation Engine</h3>
-                <p className="text-muted-foreground mb-4">
-                  Visual workflow builder coming soon. Create rules like &quot;If temperature greater than 30°C, turn on cooling system&quot;
-                </p>
-                <Button variant="outline">
-                  <Play className="w-4 h-4 mr-2" />
-                  Configure Automation
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <AutomationHub />
         </TabsContent>
       </Tabs>
     </div>

@@ -28,6 +28,7 @@ interface TelemetryData {
   power?: number;
   voltage?: number;
   current?: number;
+  data?: any;
   timestamp: string;
 }
 
@@ -39,7 +40,10 @@ export const AutomationEngine = () => {
 
   useEffect(() => {
     loadAutomationRules();
-    const interval = setInterval(checkAutomationRules, 5000); // Check every 5 seconds
+    const interval = setInterval(() => {
+      loadAutomationRules(); // Refresh rules periodically
+      checkAutomationRules();
+    }, 30000); // Check every 30 seconds
     
     return () => clearInterval(interval);
   }, []);
@@ -95,14 +99,30 @@ export const AutomationEngine = () => {
     
     if (trigger_conditions.type === 'sensor') {
       const sensorData = telemetryData.filter(data => {
-        const value = data[trigger_conditions.sensor as keyof TelemetryData];
+        // Handle both direct fields and nested data fields
+        let value;
+        if (['temperature', 'humidity', 'pressure', 'power', 'voltage', 'current'].includes(trigger_conditions.sensor)) {
+          value = data[trigger_conditions.sensor as keyof TelemetryData];
+        } else {
+          // Check in nested data object
+          value = data.data && typeof data.data === 'object' ? (data.data as any)[trigger_conditions.sensor] : undefined;
+        }
         return typeof value === 'number';
       });
 
       if (sensorData.length === 0) return;
 
       const latestData = sensorData[0];
-      const sensorValue = latestData[trigger_conditions.sensor as keyof TelemetryData] as number;
+      let sensorValue: number;
+      
+      // Get sensor value from appropriate location
+      if (['temperature', 'humidity', 'pressure', 'power', 'voltage', 'current'].includes(trigger_conditions.sensor)) {
+        sensorValue = latestData[trigger_conditions.sensor as keyof TelemetryData] as number;
+      } else {
+        sensorValue = (latestData.data as any)?.[trigger_conditions.sensor];
+      }
+      
+      if (typeof sensorValue !== 'number') return;
       
       let conditionMet = false;
       
@@ -116,6 +136,11 @@ export const AutomationEngine = () => {
         case 'equal_to':
           conditionMet = Math.abs(sensorValue - trigger_conditions.threshold) < 0.1;
           break;
+        case 'between':
+          // For 'between' condition, assume threshold is the lower bound and we need an upper bound
+          const upperBound = trigger_conditions.threshold + 10; // Default range
+          conditionMet = sensorValue >= trigger_conditions.threshold && sensorValue <= upperBound;
+          break;
       }
 
       if (conditionMet) {
@@ -125,6 +150,7 @@ export const AutomationEngine = () => {
         
         // Prevent spam - only trigger once every 5 minutes per rule/device
         if (now - lastAlert > 5 * 60 * 1000) {
+          console.log(`Automation rule triggered: ${rule.name}, ${trigger_conditions.sensor} = ${sensorValue}`);
           await executeAction(rule, latestData, sensorValue);
           alertCooldownRef.current.set(cooldownKey, now);
         }
