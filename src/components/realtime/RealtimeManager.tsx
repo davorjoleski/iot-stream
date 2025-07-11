@@ -100,10 +100,13 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
           { event: '*', schema: 'public', table: 'devices' },
           (payload) => {
             console.log('Device change:', payload);
+            const deviceId = payload.new?.id || payload.old?.id;
+            const deviceData = payload.new || payload.old;
+            
             const message: RealtimeMessage = {
               type: 'device_update',
-              deviceId: payload.new?.id || payload.old?.id,
-              data: payload.new || payload.old,
+              deviceId: deviceId,
+              data: deviceData,
               timestamp: new Date().toISOString()
             };
             onMessage?.(message);
