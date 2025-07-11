@@ -105,7 +105,7 @@ export const RealtimeManager = ({ onMessage, onStatusChange }: RealtimeManagerPr
           (payload) => {
             console.log('Device change:', payload);
             const deviceRecord = payload.new || payload.old;
-            const deviceId = deviceRecord && typeof deviceRecord === 'object' && 'id' in deviceRecord ? deviceRecord.id : undefined;
+            const deviceId = deviceRecord && typeof deviceRecord === 'object' && 'id' in deviceRecord ? deviceRecord.id as string : undefined;
             
             if (deviceRecord && deviceId) {
               const message: RealtimeMessage = {
